@@ -60,69 +60,70 @@ Execute these phases in order. Do not skip any phase.
 
 ### Phase 1: Research (Parallel Sub-Agents)
 
-Spawn TWO sub-agents to work in parallel:
+Spawn THREE sub-agents to work in parallel:
 
-#### Sub-Agent A: News Research (use `research` subagent type)
+#### Sub-Agent A: News Feed Analyst (use `research` subagent type)
 
-Prompt for the news research sub-agent:
+Prompt for the News Feed Analyst sub-agent:
 
 ```
-You are a financial news researcher for an autonomous trading agent. Your job is to
-scan today's market landscape and return a structured analysis. Today's date is {TODAY_DATE}.
+You are a retail news feed analyst for an autonomous trading agent. Your job is to
+scan high-volume retail news outlets for specific stock catalysts, upgrades/downgrades,
+and market sentiment. Today's date is {TODAY_DATE}.
 
-Search the web for the following — prioritize recency (last 24-48 hours):
+Search the web and focus your results strictly on major retail financial news feeds:
+- Benzinga, Bloomberg, Reuters, Yahoo Finance, and MarketWatch.
 
-1. MACRO ENVIRONMENT:
-   - US market futures / pre-market direction (S&P 500, Nasdaq, Dow)
-   - Federal Reserve news, interest rate decisions or commentary
-   - Economic data releases today (CPI, jobs, GDP, PMI, etc.)
-   - Major geopolitical events affecting markets
+Identify:
+1. SPECIFIC STOCK CATALYSTS:
+   - Earnings reports released yesterday or today (beats/misses/guidance shifts).
+   - Major company announcements (partnership deals, contracts, mergers/acquisitions).
+   - Analyst upgrades/downgrades with price target changes.
+   - Biotech news (FDA approvals, advisory committee meetups, trials).
+   
+2. SPECIFIC CANDIDATES:
+   - Highlight 5-8 tickers with strong catalysts. Focus on US-listed stocks > $5.
+   - For each, provide the catalyst, source URL, and expected price direction.
+   - NO penny stocks, NO Chinese ADRs, NO meme stocks.
 
-2. SECTOR CATALYSTS:
-   - Which sectors are showing momentum? (tech, healthcare, energy, defense, etc.)
-   - Any major earnings reports today or yesterday?
-   - FDA approvals, major contracts, or sector-specific news
-   - Analyst upgrades/downgrades on major stocks
+3. OUTLET RISK WARNINGS:
+   - Identify any specific tickers or sectors being flagged for downgrade, earnings misses, or risk of pullback by retail media.
 
-3. SPECIFIC OPPORTUNITIES:
-   - Identify 5-8 specific stock tickers that have strong positive catalysts today
-   - For each ticker, explain: what's the catalyst, how strong is it (confirmed vs rumor),
-     and what's the expected price direction
-   - Focus on US-listed stocks with price > $5. NO penny stocks, NO Chinese ADRs
-     (BABA, PDD, JD, NIO, XPEV, LI, BIDU, etc.), NO meme stocks (GME, AMC, etc.)
-
-4. RISK WARNINGS:
-   - Any sectors or stocks to avoid today?
-   - Market-wide risks (earnings misses, sanctions, policy changes)?
-   - Unusual volatility or VIX spikes?
-
-5. SOURCES:
-   CRITICAL: For EVERY fact, data point, or claim in your report, you MUST include the
-   source URL where you found it. Format sources inline like this:
-   - "S&P 500 fell 2.6% on Friday [source: https://www.barchart.com/...]"
-   - "Intel surged 13% on Google TPU deal [source: https://www.reuters.com/...]"
-
-   Also include a consolidated SOURCES section at the end of your report listing ALL
-   unique URLs you read, grouped by topic:
-   ## SOURCES CONSULTED
-   ### Market Data
-   - https://www.barchart.com/... — Friday market close data
-   - https://www.yelza.com/... — Economic calendar
-   ### Sector & Stock News
-   - https://www.reuters.com/... — Intel Google TPU deal
-   - https://www.benzinga.com/... — Analyst upgrades June 5
-   ### Risk & Volatility
-   - https://www.ycharts.com/... — VIX historical data
-
-   Do NOT omit sources. Every search result URL you used must appear in the final report.
-
-Return your analysis in a structured format with clear sections.
-Be specific with ticker symbols.
+4. SOURCES:
+   CRITICAL: For every ticker and claim, include the exact source URL from Benzinga, Bloomberg, Reuters, Yahoo Finance, or MarketWatch.
+   List them inline and group them in a consolidated SOURCES CONSULTED section.
 ```
 
-#### Sub-Agent B: Market Data (use `self` subagent type — needs MCP access)
+#### Sub-Agent B: Fundamental & Macro Analyst (use `research` subagent type)
 
-Prompt for the market data sub-agent:
+Prompt for the Fundamental & Macro Analyst sub-agent:
+
+```
+You are a fundamental and macro analyst for an autonomous trading agent. Your job is to
+investigate primary sources, economic releases, and structural catalysts. Today's date is {TODAY_DATE}.
+
+Search the web for:
+1. MACRO ENVIRONMENT & DATA:
+   - U.S. index futures and pre-market indicators (S&P, Nasdaq, Dow).
+   - Federal Reserve policy statements, speech transcripts, or upcoming calendar.
+   - Today's/this week's major economic releases (e.g. CPI, PPI, Jobs, Trade Deficit).
+   - Geopolitical shocks (Middle East conflict updates, oil supply issues, global sovereign ratings).
+
+2. PRIMARY CORPORATE SOURCES:
+   - Check company press releases (Google custom search or direct investor relations pages) or SEC Edgar filings (Form 8-K, Form 10-Q) for major announcements, verifying claims reported in the news.
+   - Cross-check specific opportunities for structural support (e.g. S&P index additions, definitized budget allocations, government contracts).
+
+3. VOLATILITY & VIX:
+   - Volatility level (Cboe VIX status, intraday swings) and market-wide risks.
+
+4. SOURCES:
+   CRITICAL: For every macro data point, Fed claim, or corporate filing, include the exact source URL (e.g. federalreserve.gov, sec.gov, bls.gov, bea.gov, fitchratings.com).
+   List them inline and group them in a consolidated SOURCES CONSULTED section.
+```
+
+#### Sub-Agent C: Market Data Analyst (use `self` subagent type — needs MCP access)
+
+Prompt for the Market Data Analyst sub-agent:
 
 ```
 You are a market data analyst for an autonomous trading agent. Your job is to pull
@@ -153,14 +154,12 @@ Execute these steps in order:
 
 5. MARKET DISCOVERY:
    Call `get_popular_lists` to see trending/popular lists on Robinhood.
-   Call `search` with queries for 2-3 hot sectors (e.g., "AI stocks", "defense ETF",
-   "pharmaceutical stocks") to discover tradeable instruments.
 
 Return ALL data in a structured format. Include exact numbers — do not round.
 Flag any position that has hit stop-loss (-8%) or take-profit (+10%) threshold.
 ```
 
-Wait for BOTH sub-agents to report back before proceeding.
+Wait for ALL THREE sub-agents to report back before proceeding.
 
 ---
 
@@ -340,7 +339,7 @@ Before sending, overwrite `C:\Projects\Trad\reports\daily_report.html` with a be
 8. **Portfolio**: Current positions with qty, avg price, current price, P&L. Summary metrics (total value, cash, unrealized P&L, realized P&L, rotation status).
 9. **Agent Reasoning**: The full reasoning paragraph for today's decisions.
 10. **Risk Warnings**: All stocks/sectors flagged to avoid, with ticker and reason.
-11. **Sources Consulted**: A full list of every URL the news research sub-agent cited, displayed as clickable links grouped by topic (Market Data, Sector News, Risk & Volatility, etc.). Use the same card styling as other sections. Each link should show the domain name as display text and the full URL as the href.
+11. **Sources Consulted**: A consolidated list of every URL cited by both Sub-Agent A (News Feed Analyst) and Sub-Agent B (Fundamental & Macro Analyst), displayed as clickable links grouped by topic (Market Data, Sector News, Risk & Volatility, etc.). Use the same card styling as other sections. Each link should show the domain name as display text and the full URL as the href.
 12. **Footer**: Timestamp, mode, account number.
 
 This file must be completely self-contained (inline CSS, no external JS dependencies) so it can be opened directly in a browser.
