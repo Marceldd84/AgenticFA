@@ -6,7 +6,7 @@ The FA Agent is an autonomous daily trading advisor running on a Robinhood Agent
 It fires every trading day at 10:00 AM ET via a scheduled cron, spawns parallel research
 sub-agents, scores opportunities, manages a live portfolio, and runs two parallel simulations.
 
-**Account**: Robinhood Agentic account `514240167` (ONLY — never touches `5UE77391`).
+**Account**: Robinhood Agentic account configured in config (never touches personal account).
 **Mode**: `live` (real orders enabled). Simulation accounts are always `simulated`.
 **Repo**: https://github.com/Marceldd84/AgenticFA.git
 
