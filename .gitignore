@@ -1,0 +1,13 @@
+# FA Agent Credentials & Config
+config/agent_config.json
+
+# Local Memory / Database State
+memory/
+reports/
+
+# Temporary / Intermediate Files
+scripts/last_report.txt
+*.log
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
