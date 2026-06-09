@@ -119,6 +119,11 @@ Search the web for:
 4. SOURCES:
    CRITICAL: For every macro data point, Fed claim, or corporate filing, include the exact source URL (e.g. federalreserve.gov, sec.gov, bls.gov, bea.gov, fitchratings.com).
    List them inline and group them in a consolidated SOURCES CONSULTED section.
+
+5. WOLFF FLAGSHIP FUND ANNOUNCEMENTS:
+   - Search for recent portfolio updates or "Flagship Report" posts by Peter Wolff on Substack (wolff.substack.com) or X/Twitter (@peterjwolff).
+   - Identify his current list of stock holdings, any new stock buys/additions, any trims/sells, and their respective target weights (e.g. META 10%, IREN 10%).
+   - Note any specific price targets or "accumulation zones" he mentioned.
 ```
 
 #### Sub-Agent C: Market Data Analyst (use `self` subagent type — needs MCP access)
@@ -218,6 +223,8 @@ Check the 7-day journal for:
 - **Winning streaks**: Don't get overconfident — stick to the framework
 - **Missed opportunities**: If the journal shows a stock that would have been great but wasn't bought, consider it now if the catalyst is still active
 - **Cash settlement**: If you sold yesterday, that cash may not be settled yet (T+1). Check if buying power reflects this.
+- **Wolff Flagship Signals**: If a candidate stock evaluated by the live engine is currently held or flagged as a "buy/accumulation zone" pick in Wolff's latest report, add a **+1.5 point boost** to its final score.
+
 
 #### Step 2E: Portfolio Rotation (Replacement Logic)
 
@@ -274,140 +281,153 @@ For each BUY decision:
 
 ---
 
-### Phase 4: Generate & Send Telegram Report
+### Phase 3.5: Wolff Flagship Fund Simulation (Parallel Engine)
 
-Create a daily report with this format and save it to a temporary file, then send via the Telegram script.
+If `wolff_simulation.enabled` is `true` in `agent_config.json`:
 
-**Report template:**
+1. **Initialize or Load Simulated Portfolio**:
+   - Read `memory/wolff_journal.json`. If it does not exist or has empty entries, initialize it with:
+     - `date`: Today's date
+     - `simulated_cash`: 1000.00
+     - `total_portfolio_value`: 1000.00
+     - `positions`: []
+     - `rebalance_decisions`: []
 
-```
-📊 *FA Daily Report — {DATE}* {MODE_LABEL}
+2. **Retrieve Current Quotes**:
+   - For each virtual stock holding currently in `wolff_journal.json`'s latest entry, query the Robinhood MCP tool `get_equity_quotes` to retrieve the current price.
+   - Calculate the current market value of each virtual position = `quantity × current_price`.
+   - Calculate the total virtual portfolio value = `simulated_cash + sum(current market values)`.
 
-*Market Conditions:* {EMOJI} {SENTIMENT}
-{2-3 sentence market summary}
+3. **Determine Target Weights**:
+   - Retrieve Peter Wolff's target stock tickers and weights parsed during the research phase.
+   - If no weights are specified in his latest report, default to an equal-weighted allocation across his active picks (excluding cash reserve).
+   - Apply `wolff_simulation.cash_reserve_pct` (10%) and `wolff_simulation.max_position_pct` (18%) as virtual constraints:
+     - Total investable capital = `total_portfolio_value × 0.90` (10% virtual cash reserve).
+     - Maximum per stock = `total_portfolio_value × 0.18` (18% cap).
 
-*Portfolio Snapshot:*
-💰 Total Value: ${TOTAL}
-💵 Buying Power: ${CASH}
-📦 Positions: {COUNT}
+4. **Calculate Simulated Trades (Rebalance)**:
+   - Compute the difference between each stock's current weight in the virtual portfolio and its target weight.
+   - Generate virtual transactions:
+     - **Sells / Trims**: If current allocation exceeds target (or stock is no longer in his list), virtually sell the excess shares at today's quote. Add the proceeds to `simulated_cash`.
+     - **Buys**: Using the virtual cash (up to the investable capital limit), virtually buy shares of stocks that are under-allocated at today's quote. Deduct the cost from `simulated_cash`.
+   - Record all virtual trades with `"status": "simulated"` and `"mode": "wolff_simulation"`.
 
-*Positions Detail:*
-{For each position:}
-• {SYMBOL}: {QTY} shares @ ${AVG} → ${CURRENT} ({PNL_PCT}%) {STATUS_EMOJI}
+5. **Log Virtual Transactions**:
+   - Append all virtual trades executed today to the `trades` array in `memory/wolff_trades.json` and update the simulated performance metrics.
 
-*Today's Actions:*
-{For each action taken:}
-{ACTION_EMOJI} {ACTION}: {SYMBOL} × ${AMOUNT} — {REASON}
+---
 
-{If no actions:}
-⏸ No trades today — {brief reason why}
+### Phase 4: Generate & Send Telegram Reports
 
-*Key Catalysts Observed:*
-{Top 3-4 news items that influenced decisions}
+You will generate and send **TWO distinct reports** every day:
 
-*7-Day Performance:*
-📈 Trades: {N} | Win Rate: {PCT}% | Realized P&L: ${AMOUNT}
+#### Report 1: Actual Trading Report (with Wolff's Signals)
+1. Write the main trading report text to `C:\Projects\Trad\scripts\last_report.txt` using the standard template below:
+   ```
+   📊 *FA Daily Report — {DATE}* {MODE_LABEL}
 
-{MODE_FOOTER}
-```
+   *Market Conditions:* {EMOJI} {SENTIMENT}
+   {2-3 sentence market summary}
 
-Where:
-- `{MODE_LABEL}` = "(DRY RUN)" if dry_run, empty if live
-- `{EMOJI}` = 📈 bullish, 📉 bearish, ↔️ neutral
-- `{STATUS_EMOJI}` = ✅ profit, ❌ loss, ⚠️ near stop-loss
-- `{ACTION_EMOJI}` = 🟢 buy, 🔴 sell, ⏸ hold
-- `{MODE_FOOTER}` = "⚙️ _Mode: DRY RUN — no real orders placed_" if dry_run
+   *Portfolio Snapshot:*
+   💰 Total Value: ${TOTAL}
+   💵 Buying Power: ${CASH}
+   📦 Positions: {COUNT}
 
-**To send the report:**
-1. Write the report text to a temporary file: `C:\Projects\Trad\scripts\last_report.txt`
-2. Generate the HTML Intelligence Report (see below) and save it to `C:\Projects\Trad\reports\daily_report.html`
-3. Run: `python C:\Projects\Trad\scripts\send_telegram.py C:\Projects\Trad\config\agent_config.json C:\Projects\Trad\scripts\last_report.txt C:\Projects\Trad\reports\daily_report.html`
+   *Positions Detail:*
+   {For each position:}
+   • {SYMBOL}: {QTY} shares @ ${AVG} → ${CURRENT} ({PNL_PCT}%) {STATUS_EMOJI}
 
-This sends the text summary as a chat message, followed by the full HTML dashboard as a downloadable document attachment.
+   *Today's Actions:*
+   {For each action taken:}
+   {ACTION_EMOJI} {ACTION}: {SYMBOL} × ${AMOUNT} — {REASON}
 
-**Generate the HTML Intelligence Report:**
+   {If no actions:}
+   ⏸ No trades today — {brief reason why}
 
-Before sending, overwrite `C:\Projects\Trad\reports\daily_report.html` with a beautiful, self-contained single-page HTML dashboard. Use the existing file as a **design template** — preserve the same dark-mode glassmorphism styling, layout, card structure, score bars, and CSS. Replace ALL data with today's values:
+   *Key Catalysts Observed:*
+   {Top 3-4 news items that influenced decisions, noting if any stocks received the +1.5 Wolff Signal Boost}
 
-1. **Header**: Update date, mode badge (LIVE / DRY RUN).
-2. **Market Snapshot**: Today's index closes/futures, VIX level.
-3. **Macro News**: All macro environment items from the news research (Fed, jobs, geopolitics, oil). Each item as a news-item card with appropriate tag (tag-macro, tag-sector, etc.).
-4. **Economic Calendar**: All events for the current week with dates and significance.
-5. **Sector Catalysts**: All sector-level observations from news research.
-6. **Earnings & FDA**: Any earnings reports, FDA approvals, or PDUFA dates mentioned.
-7. **Stock Scoring Table**: ALL candidates evaluated (both bought and passed), with their weighted score, score bar fill percentage, catalyst description, and action badge.
-8. **Portfolio**: Current positions with qty, avg price, current price, P&L. Summary metrics (total value, cash, unrealized P&L, realized P&L, rotation status).
-9. **Agent Reasoning**: The full reasoning paragraph for today's decisions.
-10. **Risk Warnings**: All stocks/sectors flagged to avoid, with ticker and reason.
-11. **Sources Consulted**: A consolidated list of every URL cited by both Sub-Agent A (News Feed Analyst) and Sub-Agent B (Fundamental & Macro Analyst), displayed as clickable links grouped by topic (Market Data, Sector News, Risk & Volatility, etc.). Use the same card styling as other sections. Each link should show the domain name as display text and the full URL as the href.
-12. **Footer**: Timestamp, mode, account number.
+   *7-Day Performance:*
+   📈 Trades: {N} | Win Rate: {PCT}% | Realized P&L: ${AMOUNT}
 
-This file must be completely self-contained (inline CSS, no external JS dependencies) so it can be opened directly in a browser.
+   {MODE_FOOTER}
+   ```
+2. Generate a beautiful, self-contained single-page HTML dashboard and save it to `C:\Projects\Trad\reports\daily_report.html` (preserve the dark-mode glassmorphism design template, including economic calendar, macro news, stock scoring table with the Wolff signal boosts, and live portfolio details).
+3. Send this actual report by running:
+   `python C:\Projects\Trad\scripts\send_telegram.py C:\Projects\Trad\config\agent_config.json C:\Projects\Trad\scripts\last_report.txt C:\Projects\Trad\reports\daily_report.html`
+
+#### Report 2: Wolff Flagship Fund Simulation Report
+1. Write a dedicated text report summary to `C:\Projects\Trad\scripts\wolff_last_report.txt` with this format:
+   ```
+   📊 *Wolff Flagship Simulation Report — {DATE}* (SIMULATION)
+
+   *Simulation Portfolio Snapshot:*
+   💰 Total Virtual Value: ${TOTAL}
+   💵 Virtual Cash: ${CASH}
+   📦 Virtual Positions: {COUNT}
+
+   *Virtual Positions Detail:*
+   {For each virtual position:}
+   • {SYMBOL}: {QTY} shares @ ${AVG_PRICE} → ${CURRENT_PRICE} ({PNL_PCT}%)
+
+   *Today's Rebalances:*
+   {For each rebalance decision:}
+   {ACTION_EMOJI} {ACTION}: {SYMBOL} × ${AMOUNT} at ${PRICE}
+
+   {If no rebalances:}
+   ⏸ No simulated rebalances today.
+
+   *Wolff Target Portfolio (from Substack/X):*
+   {List Peter Wolff's target list and weights parsed from his report}
+   ```
+2. Generate a dedicated HTML report `C:\Projects\Trad\reports\wolff_simulation_report.html` showcasing the virtual portfolio holdings, weights, P&L bars, historical simulated trades, and Peter Wolff's parsed Substack updates. Maintain the same dark-mode glassmorphism CSS styling as the main report.
+3. Send this simulation report by running:
+   `python C:\Projects\Trad\scripts\send_telegram.py C:\Projects\Trad\config\agent_config.json C:\Projects\Trad\scripts\wolff_last_report.txt C:\Projects\Trad\reports\wolff_simulation_report.html`
 
 ---
 
 ### Phase 5: Update Memory
 
 #### Update journal.json:
+1. Read `memory/journal.json`.
+2. Create a new entry for today (date, sentiment, portfolio snapshot, catalysts, decisions, orders, and reasoning).
+3. Append to the `entries` array and prune to the last 7 entries.
+4. Write it back to the file.
 
-1. Read the current journal file
+#### Update trades.json:
+1. Read `memory/trades.json`.
+2. For each live/actual trade placed (or simulated in actual dry run), append to the `trades` array.
+3. Update performance metrics (realized P&L, win rate, total trades).
+4. Write it back to the file.
+
+#### Update wolff_journal.json:
+1. Read `memory/wolff_journal.json`.
 2. Create a new entry for today:
 ```json
 {
   "date": "YYYY-MM-DD",
-  "market_conditions": "Brief sentiment description",
-  "portfolio_snapshot": {
-    "total_value": 500.00,
-    "cash_available": 200.00,
-    "positions_count": 3,
-    "positions": [
-      {"symbol": "NVDA", "qty": 0.71, "avg_price": 210.40, "current_price": 215.00, "pnl_pct": 2.18}
-    ]
-  },
-  "news_catalysts": ["catalyst 1", "catalyst 2"],
-  "decisions": [
-    {"action": "BUY", "symbol": "NVDA", "amount": 150.00, "reason": "AI catalyst"},
-    {"action": "HOLD", "symbol": "LLY", "reason": "Within range, no catalyst change"}
+  "simulated_cash": 120.50,
+  "total_portfolio_value": 1050.00,
+  "positions": [
+    {"symbol": "META", "qty": 0.20, "avg_price": 490.00, "current_price": 500.00, "pnl_pct": 2.04}
   ],
-  "orders_placed": [
-    {"symbol": "NVDA", "side": "buy", "amount": 150.00, "order_id": "uuid-here", "status": "placed"}
-  ],
-  "trailing_stop_peaks": {
-    "NVDA": 230.50
-  },
-  "reasoning": "2-3 sentences explaining the overall thinking today"
+  "rebalance_decisions": [
+    {"action": "BUY", "symbol": "META", "amount": 100.00}
+  ]
 }
 ```
-3. Append the new entry to the `entries` array
-4. **Prune**: If entries.length > 7, remove the oldest entries to keep only the most recent 7
-5. Write the updated journal back to the file
+3. Append it and prune the array to keep only the last 14 entries.
+4. Write it back to `memory/wolff_journal.json`.
 
-#### Update trades.json:
-
-1. Read the current trades file
-2. For each order placed (or simulated) today, append to the `trades` array:
-```json
-{
-  "date": "YYYY-MM-DD",
-  "mode": "dry_run",
-  "symbol": "NVDA",
-  "side": "buy",
-  "type": "market",
-  "dollar_amount": "150.00",
-  "quantity": "0.71",
-  "price_at_decision": "210.40",
-  "order_id": "uuid-or-null",
-  "status": "placed",
-  "reason": "AI infrastructure catalyst"
-}
-```
-3. Update the `performance` section:
-   - For sells: calculate realized P&L (sell price - avg_buy_price) × quantity
-   - Increment `total_trades`, `winning_trades` or `losing_trades`
-   - Recalculate `win_rate_pct` and `total_realized_pnl`
-4. Write the updated trades log back to the file
+#### Update wolff_trades.json:
+1. Read `memory/wolff_trades.json`.
+2. For each simulated trade executed for the Wolff copy-portfolio, append to the `trades` array.
+3. Update simulated performance metrics.
+4. Write it back to `memory/wolff_trades.json`.
 
 ---
+
 
 ## EDGE CASES
 

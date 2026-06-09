@@ -25,6 +25,14 @@
     ],
     "notes": "Penny stocks filtered by min_stock_price ($5). Chinese ADRs and meme stocks by blocked_symbols list + agent judgment."
   },
+  "wolff_simulation": {
+    "enabled": true,
+    "starting_capital": 1000.00,
+    "cash_reserve_pct": 10.0,
+    "max_position_pct": 18.0,
+    "signal_score_boost": 1.5,
+    "description": "Runs a parallel, simulated copy of Wolff's Flagship Fund starting with $1,000 cash. No real orders are submitted for this strategy."
+  },
   "schedule": {
     "cron_utc": "0 14 * * 1-5",
     "description": "10:00 AM ET (EDT) / 7:00 AM PT, Monday through Friday",

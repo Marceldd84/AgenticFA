@@ -7,6 +7,7 @@ reports/
 
 # Temporary / Intermediate Files
 scripts/last_report.txt
+scripts/wolff_last_report.txt
 *.log
 __pycache__/
 *.pyc
