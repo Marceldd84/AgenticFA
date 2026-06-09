@@ -1,102 +1,141 @@
-# Walkthrough — Autonomous FA Trading Agent
+# FA Agent — Cumulative Walkthrough
 
-The autonomous Financial Advisor (FA) trading agent has been successfully configured, tested via a dry run, and scheduled.
+## Architecture Overview
 
----
+The FA Agent is an autonomous daily trading advisor running on a Robinhood Agentic account.
+It fires every trading day at 10:00 AM ET via a scheduled cron, spawns parallel research
+sub-agents, scores opportunities, manages a live portfolio, and runs two parallel simulations.
 
-## 🚀 Changes Made
-
-We created a complete agent structure in the workspace `C:\Projects\Trad\`:
-1. **`config/agent_config.json`**: Configures the agent's account, live/dry run mode, risk parameters, and Telegram credentials. (Updated: `max_position_pct` set to **18%** to allow holding up to 5 positions).
-2. **`memory/journal.json`**: Acts as the rolling 7-day memory to maintain consistency across daily runs.
-3. **`memory/trades.json`**: A permanent historical log of all simulated/actual trades and performance metrics.
-4. **`scripts/send_telegram.py`**: A robust Python helper that format-validates, chunks, and delivers reports directly to your Telegram bot. (Updated: support sending the interactive HTML report as a document attachment).
-5. **`reports/daily_report.html`**: A premium glassmorphism dark-mode HTML dashboard featuring all market data, macro news, economic calendar, scoring, positions, reasoning, and risk warnings with clickable source URLs.
-6. **`.gemini/skills/daily_fa/SKILL.md`**: The master strategy and system prompt instructions that the agent follows on every run. (Updated: triggers at 10:00 AM ET; compiles dynamic news source tracking; uses portfolio rotation logic).
+**Account**: Robinhood Agentic account `514240167` (ONLY — never touches `5UE77391`).
+**Mode**: `live` (real orders enabled). Simulation accounts are always `simulated`.
+**Repo**: https://github.com/Marceldd84/AgenticFA.git
 
 ---
 
-## 🧪 Validation & Dry Run Results
+## Phase 1 — Initial Implementation
 
-We successfully executed the first day analysis manually in `dry_run` mode:
-- **Market Data Analysis**: Verified connection to the Robinhood MCP, retrieving account balance ($500 cash, 0 positions) and pulling live stock quotes.
-- **News Analysis**: Scanned the macro environment, identifying a cautious tone following the recent Nasdaq sell-off (-4.2%) and impending CPI print.
-- **Decision Engine**:
-  - Scored 8 candidates.
-  - Selected 3 defensive/hedged positions for initial allocation: **Eli Lilly (LLY)**, **RTX (RTX)**, and **ExxonMobil (XOM)** at $150.00 each (30% max position limit).
-  - Maintained a $50.00 cash reserve (10%).
-- **Telegram Notification**: Formatted and delivered a beautiful markdown report to your `@El_FA_bot` chat (Chat ID: `536039236`).
-- **Memory Updates**: Successfully saved the analysis in `journal.json` and logged the simulated trades in `trades.json` with quotes and share quantities.
+### What Was Built
+- Core SKILL.md daily workflow (Phases 0–5)
+- Robinhood MCP integration via `get_portfolio`, `get_equity_positions`, `get_equity_quotes`, `place_equity_order`
+- 5-factor scoring engine (catalyst strength, price momentum, sector alignment, portfolio fit, risk/reward)
+- Hard stop-loss (-8%), take-profit (+10%), trailing stop (-5% from peak) rules
+- Portfolio rotation logic (sell weakest, buy strongest if ≥2.0 score gap)
+- Telegram reporting via `scripts/send_telegram.py`
+- 7-day rolling journal memory (`memory/journal.json`)
+- Permanent trade log (`memory/trades.json`)
 
----
-
-## 📅 Scheduled Daily Run
-
-We registered a recurring schedule to wake the agent up every weekday:
-- **Schedule ID**: `34fd924f-af43-40b3-b7a1-9912e42e7b56/task-555`
-- **Trigger Time**: `0 10 * * 1-5` (10:00 AM Local Time / Eastern Time, Mon-Fri)
-- **Action**: Triggers the agent 30 minutes after market open to avoid opening-range volatility, automatically runs the `daily_fa` workflow, builds the HTML report, and pushes both the text report and the HTML file attachment to Telegram.
+### Peter Wolff Flagship Simulation (Phase 1 Add-on)
+- Parallel $1,000 virtual portfolio copying Peter Wolff's Substack/X disclosed picks
+- Memory: `memory/wolff_journal.json` (14-day rolling), `memory/wolff_trades.json`
+- Wolff picks get a **+1.5 score boost** in the live scoring engine
+- Generates Report 2 (separate Telegram message + HTML dashboard)
+- `config/agent_config.json` → `wolff_simulation` block
 
 ---
 
-## 🛑 How to Pause or Stop the Agent
+## Phase 2 — Intelligence Upgrade (June 9, 2026)
 
-If you ever want to disable or pause the trading bot:
+### Commit: `9465ada` → pushed to `main`
 
-### Option A: Pause the Agent (Recommended)
-Edit `C:\Projects\Trad\config\agent_config.json` and change the mode:
-```json
-"mode": "paused"
-```
-The agent will still trigger at 10:00 AM, but it will immediately send a brief message to Telegram ("FA Agent is paused, skipping today") and exit without performing any research or placing trades.
+### 1. Macro Regime Classifier (Phase 0, Step 4)
+Every morning before any analysis runs, the agent:
+1. Fetches today's **VIX value** (finviz.com / CBOE)
+2. Checks whether **SPX is above/below its 50-day MA** (finviz.com / macrotrends.net)
+3. Classifies the day as one of three regimes:
 
-### Option B: Delete/Stop the Cron Task
-If you want to permanently stop the scheduled triggers:
-- Ask me to kill the background task `34fd924f-af43-40b3-b7a1-9912e42e7b56/task-555`.
-- Or run the following command in chat:
-  ```powershell
-  /manage_task kill 34fd924f-af43-40b3-b7a1-9912e42e7b56/task-555
-  ```
+| Regime | Condition | Cash Reserve | Min Score | New Buys? |
+|---|---|---|---|---|
+| 🟢 risk_on | VIX < 18 + SPX above 50-day | 10% | 6.0 | Yes |
+| 🟡 cautious | VIX 18–25 or SPX near MA | 15% | 6.5 | Yes |
+| 🔴 risk_off | VIX > 25 or SPX below MA | 25% | 7.5 | No |
+
+The regime **overrides** the base config for that entire day's run.
+If VIX data is unavailable → defaults to `cautious` (conservative fallback).
+
+### 2. Earnings Calendar (Sub-Agent A, Section 4)
+- Fetches today's earnings releases from Yahoo Finance / EarningsWhispers
+- **Reported today**: Beat+Raised → **+2.0 boost**; Beat only → **+1.0**; Miss → **-2.0 penalty**
+- **Reporting tomorrow pre-market**: Stock is **BLOCKED** from new buys today
+
+### 3. SEC Form 4 — Insider Buying (Sub-Agent B, Section 4)
+- Scrapes OpenInsider for Form 4 "Purchase" filings in the last 48 hours (>$50K)
+- Cluster buys (3+ insiders, same company): **+1.0 boost**
+- Large single buy (>$500K): **+0.5 boost**
+- Ignores: option exercises, gifts, automatic plan transactions
+
+### 4. Congress Trades — STOCK Act (Sub-Agent B, Section 5)
+- Scrapes QuiverQuant for congressional stock purchases in the last 7 days
+- Purchases only (not sales, not ETFs)
+- 3+ members buying same ticker: **+1.0 boost**
+- 1–2 members buying: **+0.5 boost**
+
+### 5. ARK Invest ARKK Holdings (Sub-Agent B, Section 7)
+- Fetches ARKK's daily disclosed holdings CSV from ark-funds.com
+- ARK's recent buys (last 3 trading days) trigger a **+0.75 boost** to the live engine
+- Data used for Phase 3.6 ARK simulation
+
+### 6. Expanded Score Modifier Table (Phase 2D)
+All modifiers are additive, **capped at +4.0 total per stock**:
+| Signal | Modifier |
+|---|---|
+| Wolff pick | +1.5 |
+| ARK recent buy | +0.75 |
+| Insider cluster | +1.0 |
+| Insider large single | +0.5 |
+| Congress cluster | +1.0 |
+| Congress single | +0.5 |
+| Earnings beat+raised | +2.0 |
+| Earnings beat only | +1.0 |
+| Earnings miss | -2.0 |
+| Earnings tomorrow | BLOCK |
+
+### 7. ARK Invest ARKK Simulation (Phase 3.6)
+Mirrors Wolff simulation architecture exactly:
+- $1,000 virtual starting capital
+- Tracks ARKK's top 15 holdings by disclosed weight
+- Daily delta-rebalancing using Robinhood live quotes
+- Memory: `memory/ark_journal.json` (14-day), `memory/ark_trades.json`
+- Graceful fallback: if ARK data unavailable → skip sim, log "ARK_DATA_UNAVAILABLE"
+- Config: `agent_config.json` → `ark_simulation` block
+
+### 8. Triple Reporting System (Phase 4)
+Agent now sends **3 Telegram messages** per day:
+1. **Main FA Report** — live portfolio + all signal modifiers applied + macro regime badge
+2. **Wolff Simulation Report** — virtual portfolio + Wolff target allocation
+3. **ARK Simulation Report** (NEW) — virtual ARKK portfolio + ARK disclosed holdings
+
+HTML dashboards (dark-mode glassmorphism):
+- `reports/daily_report.html` — includes Signal Intelligence table + Macro Regime banner
+- `reports/wolff_simulation_report.html` — Wolff virtual portfolio
+- `reports/ark_simulation_report.html` (NEW) — ARK virtual portfolio + top-15 holdings
 
 ---
 
-## ⚡ Three-Agent Consolidation & Comparison (June 9, 2026)
+## Files Modified in Phase 2
 
-Following user feedback on news coverage, we split the single news researcher into three parallel subagents:
-1. **News Feed Analyst**: Scans retail news outlets (Benzinga, Bloomberg, Reuters, Yahoo Finance, MarketWatch) to capture market-wide retail sentiment.
-2. **Fundamental & Macro Analyst**: Queries primary sources (SEC Edgar 8-K/10-Q filings, Federal Reserve policy statements, DoD defense contract awards, BEA economic reports).
-3. **Market Data Analyst**: Connects to the Robinhood MCP server to check account balances, quotes, and P&L.
-
-We executed a comparison dry run of this new architecture on June 9, 2026, and compared it with the morning run:
-- **Morning Run (Single Agent)**: Missed several high-priority catalysts due to information overload.
-- **Three-Agent Run (Consolidated)**: Successfully captured:
-  - GSK's **$10.6B** cash acquisition of Nuvalent ($NUVL).
-  - J.M. Smucker ($SJM) Q4 earnings beat (Adjusted EPS $2.77) and guidance raise.
-  - Flex Ltd. ($FLEX) index addition to the S&P 500.
-  - DraftKings ($DKNG) 8-K filing showing +34% MoM trading volume surge.
-- **Delivery**: The comparison summary (`last_report.txt`) and premium glassmorphism HTML dashboard (`reports/daily_report.html`) showing clickable source URLs were successfully delivered to Telegram.
-- **Transactions**: No trades were executed, as requested. LLY and RTX remain held, and cash from the morning's XOM sell remains pending settlement (T+1). APLD and AAPL/MRVL are queued for tomorrow's 10:00 AM ET run.
+| File | Status | Notes |
+|---|---|---|
+| `.gemini/skills/daily_fa/SKILL.md` | Modified | Full rewrite — Phase 2 features |
+| `config/agent_config.json` | Modified (local only, gitignored) | Added `macro_regime` + `ark_simulation` |
+| `memory/ark_journal.json` | Created (local only, gitignored) | ARK sim state |
+| `memory/ark_trades.json` | Created (local only, gitignored) | ARK trade log |
+| `.gitignore` | Modified | Added `scripts/ark_last_report.txt` |
 
 ---
 
-## 🐺 Wolff Flagship Fund Simulation & Signal Integration (June 9, 2026)
+## Simulation Comparison Overview
 
-We implemented a parallel simulation and signal integration strategy for Peter Wolff's Flagship Fund copy-trading:
-1. **Virtual Separate Account**:
-   - Initialized a separate virtual account in memory starting with **$1,000 in virtual cash** and $0 holdings.
-   - Initial simulated trades were executed to establish target allocations (10% NVDA, 10% IREN, 8% PLTR, 8% CIFR, 7% WULF, 10% META, 10% AMZN, 8% MSFT, 7% BN, 6% ELV, 6% SGOV, and a 10% virtual cash reserve).
-   - Real-time stock quotes from the Robinhood API are pulled daily to calculate total virtual portfolio value, rebalances, and P&L.
-2. **Signal Integration**:
-   - The Fundamental & Macro Analyst now scrapes Peter Wolff's Substack (`wolff.substack.com`) and X (`@peterjwolff`) daily.
-   - If a watchlist candidate stock matches his active picks, the live scoring engine applies a **+1.5 point boost** to its score.
-3. **Dual Telegram Reporting**:
-   - The agent now compiles and sends **two distinct reports** daily:
-     - **Report 1 (Live Portfolio)**: Delivers `last_report.txt` and [daily_report.html](file:///C:/Projects/Trad/reports/daily_report.html) for actual trades.
-     - **Report 2 (Simulation Portfolio)**: Delivers `wolff_last_report.txt` and [wolff_simulation_report.html](file:///C:/Projects/Trad/reports/wolff_simulation_report.html) for virtual copy-trading.
-4. **Memory Management**:
-   - Created [wolff_journal.json](file:///C:/Projects/Trad/memory/wolff_journal.json) and [wolff_trades.json](file:///C:/Projects/Trad/memory/wolff_trades.json) to store the simulation state locally.
-   - Created Git templates [wolff_journal.template.json](file:///C:/Projects/Trad/memory/wolff_journal.template.json) and [wolff_trades.template.json](file:///C:/Projects/Trad/memory/wolff_trades.template.json) for repository tracking.
-5. **Git Synchronization**:
-   - Staged all modifications, updated [config/agent_config.template.json](file:///C:/Projects/Trad/config/agent_config.template.json) and [.gitignore](file:///C:/Projects/Trad/.gitignore), and pushed everything to the main branch on GitHub.
+| Account | Starting Capital | Source | Score Boost to Live Engine |
+|---|---|---|---|
+| Live Portfolio | Real cash | Agent's own decisions | — |
+| Wolff Flagship Sim | $1,000 virtual | Peter Wolff Substack/X | +1.5 per matching stock |
+| ARK Invest Sim | $1,000 virtual | ARKK daily CSV | +0.75 per recent buy |
 
+After ~2 weeks of running, you'll have a live 3-way performance comparison:
+your agent vs. Wolff vs. ARK vs. SPY (implied benchmark).
 
+---
+
+## Scheduled Run
+- **Time**: 10:00 AM ET, Monday–Friday
+- **Cron UTC**: `0 14 * * 1-5` (EDT) / change to `0 15 * * 1-5` during EST (Nov–Mar)

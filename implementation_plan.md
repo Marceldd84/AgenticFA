@@ -1,134 +1,206 @@
-# Implementation Plan — Wolff Flagship Fund Integration & Parallel Simulation
+# FA Agent — Phase 2 Intelligence Upgrade
 
-We will implement a parallel simulation of Peter Wolff's Flagship Fund copy-trading strategy alongside your live catalyst-based strategy. The simulation will run locally in memory as a completely separate virtual account starting with **$1,000 in virtual cash** and 0 holdings.
-
-Additionally, we will integrate Wolff's stock holdings and accumulation zone alerts as research signals to influence the opportunity scores of your live trading agent.
+Adding 4 new signal catalogs to the live scoring engine, a Macro Regime Classifier that controls risk settings daily, and a second parallel simulation (ARK Invest copy-trading) alongside the existing Wolff Flagship sim.
 
 ---
 
-## User Review Required
+## Summary of Changes
 
-> [!IMPORTANT]
-> **No live trades will be placed for the Wolff strategy.** The Wolff Copy-Trader will run strictly as a local simulation for 1–2 weeks. You can inspect its simulated trades, portfolio breakdown, and performance in your daily Telegram reports before deciding whether to enable it for real execution.
-
-> [!TIP]
-> **Signal Integration is active**: The subagents will immediately begin scanning Peter Wolff's public Substack and X posts. If a stock on your live agent's watchlist is also recommended or held by Wolff, it will receive a boost in its decision score, helping align your live picks with his research.
+| # | Feature | Where | Impact |
+|---|---|---|---|
+| 1 | Macro Regime Classifier | Phase 0 (Pre-Flight) | Dynamic risk settings |
+| 2 | SEC Form 4 Insider Buys | Phase 1, Sub-Agent B | Score boost up to +1.0 |
+| 3 | Earnings Calendar (EPS beats) | Phase 1, Sub-Agent A | Score boost up to +2.0 |
+| 4 | Congress Trades (Quiver Quant) | Phase 1, Sub-Agent B | Score boost up to +1.0 |
+| 5 | ARK Invest Simulation | Phase 3.5 (parallel) | New $1K virtual portfolio |
 
 ---
 
 ## Proposed Changes
 
-### 1. Configuration Settings
-We will update `config/agent_config.json` to define the Wolff strategy simulation settings and the signal boost weight.
+### Component 1: `agent_config.json`
 
 #### [MODIFY] [agent_config.json](file:///C:/Projects/Trad/config/agent_config.json)
-```json
-{
-  "mode": "live",
-  "account_number": "514240167",
-  "telegram": {
-    "bot_token": "8921546887:AAECsdY6ipILmHYV5MOT9jaaEetUQykX9GQ",
-    "chat_id": "536039236"
-  },
-  "risk_rules": {
-    "max_position_pct": 18,
-    "max_positions": 5,
-    "min_positions": 2,
-    "hard_stop_loss_pct": 8,
-    "take_profit_trigger_pct": 10,
-    "trailing_stop_pct": 5,
-    "cash_reserve_pct": 10,
-    "max_daily_trades": 3,
-    "min_stock_price": 5.00
-  },
-  "exclusions": {
-    "categories": ["penny_stocks", "chinese_adrs", "meme_stocks"],
-    "blocked_symbols": [
-      "GME", "AMC", "BBBY", "KOSS", "BB", "CLOV", "WISH", "WKHS",
-      "BABA", "PDD", "JD", "NIO", "XPEV", "LI", "BIDU", "BILI", "IQ", "TAL", "FUTU", "TME", "DIDI",
-      "TCEHY", "BEKE", "ZH", "YMM", "MNSO", "GDS", "KC", "VNET", "QFIN", "TIGR", "FINV"
-    ]
-  },
-  "wolff_simulation": {
-    "enabled": true,
-    "starting_capital": 1000.00,
-    "cash_reserve_pct": 10.0,
-    "max_position_pct": 18.0,
-    "signal_score_boost": 1.5,
-    "description": "Runs a parallel, simulated copy of Wolff's Flagship Fund starting with $1,000 cash. No real orders are submitted for this strategy."
-  },
-  "schedule": {
-    "cron_utc": "0 14 * * 1-5"
-  }
-}
-```
+
+Add two new top-level blocks:
+
+1. **`macro_regime`**: defines thresholds for VIX and S&P 500 MA-based regime classification:
+   - `risk_on`: VIX < 18 → normal rules
+   - `cautious`: VIX 18–25 → cash_reserve 15%, min_score 6.5
+   - `risk_off`: VIX > 25 → cash_reserve 25%, min_score 7.5, no new buys
+
+2. **`ark_simulation`**: mirrors the `wolff_simulation` block:
+   - `enabled: true`
+   - `starting_capital: 1000.00`
+   - `cash_reserve_pct: 10.0`
+   - `max_position_pct: 18.0`
+   - `signal_score_boost: 0.75` (smaller than Wolff — ARK is more speculative)
+   - `source`: ARK daily disclosed trades at `https://ark-funds.com/funds/arkk/`
 
 ---
 
-### 2. Strategy and Prompts Update
-We will update `.gemini/skills/daily_fa/SKILL.md` to incorporate Wolff's research into the workflow.
+### Component 2: `SKILL.md` — Phase 0 (Pre-Flight)
 
 #### [MODIFY] [SKILL.md](file:///C:/Projects/Trad/.gemini/skills/daily_fa/SKILL.md)
-*   **Phase 1 (Research)**: Update **Sub-Agent B (Fundamental & Macro Analyst)** to search Wolff's Substack (`wolff.substack.com`) and X account for recent "Flagship Report" updates, compiling his current holdings, target weights, and accumulation zones.
-*   **Phase 2B (Opportunity Scoring)**: If a candidate stock evaluated by the live engine is currently held or flagged as a "buy" in Wolff's latest report, add a **+1.5 point boost** to its portfolio fit score (Step 2B).
-*   **Phase 3.5 (Wolff Portfolio Simulation - Parallel Engine)**:
-    1. Check `memory/wolff_journal.json`. If it does not exist, initialize a virtual portfolio with **$1,000 in virtual cash** and 0 positions.
-    2. For any virtual holdings currently in the portfolio, call `get_equity_quotes` via the Robinhood MCP to get their actual, current prices.
-    3. Calculate the total current virtual portfolio value (simulated cash + current value of virtual positions).
-    4. Compare current virtual allocations to Wolff's target weights.
-    5. Calculate the required virtual transactions (trims/sells first, then buys) while keeping a 10% simulated cash reserve.
-    6. Save these simulated trades in `memory/wolff_trades.json` and update `memory/wolff_journal.json` with the new share quantities, average buy prices, and cash balance.
-*   **Phase 4 (Reporting)**: Append a **Wolff Flagship Simulation** card in the HTML report and a summary section in the Telegram message displaying the simulated portfolio's composition, P&L, and pending rebalances.
+
+Add **Step 4: Macro Regime Classification** at the end of Phase 0:
+
+- Agent fetches today's VIX value (from Sub-Agent B later, or cached from yesterday's journal)
+- Agent checks if SPX is above or below its 50-day moving average (via news/finviz search)
+- Classifies regime as `risk_on`, `cautious`, or `risk_off`
+- Writes the regime into today's journal entry
+- **Overrides** `cash_reserve_pct` and minimum buy score for the rest of the day's run:
+
+| Regime | cash_reserve_pct | min_score | New buys allowed? |
+|---|---|---|---|
+| 🟢 risk_on | 10% (config default) | 6.0 | Yes |
+| 🟡 cautious | 15% | 6.5 | Yes |
+| 🔴 risk_off | 25% | 7.5 | No (unless rotation) |
 
 ---
 
-### 3. New Memory Files
-We will create separate memory files to track the state of the simulated Wolff portfolio.
+### Component 3: `SKILL.md` — Phase 1 (Research Sub-Agents)
 
-#### [NEW] [wolff_journal.json](file:///C:/Projects/Trad/memory/wolff_journal.json)
-Tracks the daily asset allocation and rolling 7-day state of the simulated Wolff portfolio.
-```json
-{
-  "entries": [
-    {
-      "date": "2026-06-09",
-      "simulated_cash": 1000.00,
-      "total_portfolio_value": 1000.00,
-      "positions": [],
-      "rebalance_decisions": []
-    }
-  ]
-}
+#### [MODIFY] [SKILL.md](file:///C:/Projects/Trad/.gemini/skills/daily_fa/SKILL.md)
+
+**Sub-Agent A (News Feed Analyst)** gets a new section:
+
+```
+5. EARNINGS CALENDAR CHECK:
+   - Search Yahoo Finance or EarningsWhispers for today's earnings releases.
+   - For each company that ALREADY REPORTED today:
+     - Did they beat EPS estimates? By how much?
+     - Did they raise/lower guidance?
+     - Beat + raised guidance = STRONG CATALYST (+2.0 to scoring)
+     - Beat only = moderate catalyst (+1.0)
+     - Miss = negative flag (mark for avoidance)
+   - For companies reporting TOMORROW PRE-MARKET:
+     - Flag them as "earnings risk" — do NOT initiate a new position today.
 ```
 
-#### [NEW] [wolff_trades.json](file:///C:/Projects/Trad/memory/wolff_trades.json)
-Maintains the permanent transaction log of all simulated buy/sell orders executed for the Wolff copy-trading strategy.
+**Sub-Agent B (Fundamental & Macro Analyst)** gets two new sections:
+
+```
+6. SEC FORM 4 — INSIDER BUYING:
+   - Search OpenInsider (openinsider.com) or SEC EDGAR for Form 4 filings in the last 48 hours.
+   - Filter for: transaction_type = "Purchase" (P), amount > $50,000.
+   - Cluster buys: 3+ insiders buying same company = STRONG signal.
+   - Single large buy (>$500K) = MODERATE signal.
+   - Ignore: "Automatic exercise of options" and "Disposition" transactions.
+   - Return list of: company, insider title, dollar amount, date.
+
+7. CONGRESS TRADES — STOCK ACT DISCLOSURES:
+   - Search QuiverQuant (quiverquant.com/congresstrading) for congressional stock purchases in the last 7 days.
+   - Focus on PURCHASES only (not sales or options).
+   - Multiple Congress members buying same stock = stronger signal.
+   - Return list of: ticker, Congress member, party, amount, date.
+```
+
+---
+
+### Component 4: `SKILL.md` — Phase 2B (Scoring Engine)
+
+#### [MODIFY] [SKILL.md](file:///C:/Projects/Trad/.gemini/skills/daily_fa/SKILL.md)
+
+In Step 2D (Memory-Informed Adjustments), expand the score modifier table:
+
+| Signal | Boost | Condition |
+|---|---|---|
+| Wolff Flagship holding/pick | +1.5 | Stock in Wolff's latest report |
+| ARK Invest recent purchase | +0.75 | ARK bought in last 3 trading days |
+| SEC Form 4 cluster buy | +1.0 | 3+ insiders buying in last 48h |
+| SEC Form 4 single large buy | +0.5 | 1 insider >$500K in last 48h |
+| Congress cluster buy | +1.0 | 3+ members bought in last 7 days |
+| Congress single buy | +0.5 | 1 member bought in last 7 days |
+| Earnings beat + raised guidance | +2.0 | Already reported today |
+| Earnings beat only | +1.0 | Already reported today |
+| Earnings miss | -2.0 | Already reported today |
+| Earnings tomorrow (pre-market) | BLOCK | Do not initiate position today |
+
+**Maximum cumulative boost per stock: +4.0** (to prevent outliers from bypassing score framework entirely)
+
+---
+
+### Component 5: `SKILL.md` — Phase 3.5 (ARK Simulation)
+
+#### [MODIFY] [SKILL.md](file:///C:/Projects/Trad/.gemini/skills/daily_fa/SKILL.md)
+
+Add a new **Phase 3.5b: ARK Invest Fund Simulation** block that mirrors the Wolff simulation logic:
+
+1. **Source**: ARK discloses daily trade CSVs at `https://ark-funds.com/funds/arkk/` (ARKK only for now — their flagship)
+2. **Initialize or Load**:
+   - Read `memory/ark_journal.json`. If empty/missing, initialize with $1,000 starting capital and `positions: []`.
+3. **Get ARK's Current Holdings**:
+   - Scrape or fetch ARKK's disclosed portfolio. They publish a daily CSV with ticker, weight %, and shares held.
+   - Parse the top 15 holdings by weight (capped at 18% per position per our rules).
+4. **Rebalance Virtual Portfolio**:
+   - Same delta-rebalancing logic as Wolff sim.
+   - Use Robinhood `get_equity_quotes` to price virtual holdings.
+5. **Log Trades**:
+   - Append to `memory/ark_trades.json` with `"mode": "ark_simulation"`.
+
+---
+
+### Component 6: Memory Files (NEW)
+
+#### [NEW] `memory/ark_journal.json`
+Initialize with same structure as `wolff_journal.json`:
+```json
+{ "entries": [] }
+```
+
+#### [NEW] `memory/ark_trades.json`
+Initialize with same structure as `wolff_trades.json`:
 ```json
 {
   "trades": [],
   "performance": {
-    "total_trades": 0,
-    "winning_trades": 0,
-    "losing_trades": 0,
-    "total_realized_pnl": 0.0,
-    "win_rate_pct": 0.0
+    "total_trades": 0, "winning_trades": 0,
+    "losing_trades": 0, "total_realized_pnl": 0.0, "win_rate_pct": 0.0
   }
 }
 ```
+
+---
+
+### Component 7: Reporting — Phase 4
+
+#### [MODIFY] [SKILL.md](file:///C:/Projects/Trad/.gemini/skills/daily_fa/SKILL.md)
+
+**Report 1 (Main)**: Add a new "Signal Intelligence" section to the HTML dashboard showing:
+- Today's **Macro Regime** badge (🟢/🟡/🔴) with VIX value
+- **Score modifier table**: which boosts were applied to which stocks and why
+- Insider, Congress, and ARK signal alerts for any matched tickers
+
+**Report 3 (NEW): ARK Simulation Report**
+- Identical structure to the Wolff simulation report
+- Saved to: `C:\Projects\Trad\reports\ark_simulation_report.html`
+- Text summary to: `C:\Projects\Trad\scripts\ark_last_report.txt`
+- Sent via Telegram as a 3rd report
 
 ---
 
 ## Verification Plan
 
-### Automated Verification
-1.  **Manual Dry Run**: Trigger a manual execution of the modified workflow in `"dry_run"` mode to verify:
-    *   The research subagent successfully queries and parses Wolff's Substack.
-    *   The live strategy candidate scoring logs show the `+1.5` score boost when matching his picks.
-    *   The parallel rebalancing algorithm runs using the $1,000 virtual portfolio value.
-    *   The simulated actions are written to `wolff_trades.json` and `wolff_journal.json` without placing orders.
-    *   The Telegram and HTML reports contain the new Wolff sections.
+### Automated
+- Run SKILL.md manually (one-shot invocation) to confirm all 3 simulations initialize cleanly
+- Check `memory/ark_journal.json` is written after first run
+- Confirm 3 Telegram messages are sent
 
 ### Manual Verification
-*   **Review Telegram Message**: Verify that the daily Telegram report includes the new "Wolff Flagship Fund Simulation" summary card.
-*   **Inspect HTML Report**: Open `reports/daily_report.html` to confirm that the Wolff portfolio table displays correctly alongside the live portfolio.
-*   **Audit memory files**: Review `wolff_journal.json` and `wolff_trades.json` to verify simulated positions are tracked accurately over multiple runs.
+- Review tomorrow's Telegram messages — should see 3 reports:
+  1. Main FA Report (with regime badge + score boosts displayed)
+  2. Wolff Simulation Report
+  3. ARK Simulation Report
+- Confirm score table in HTML shows which boosts were applied
+- Check git to confirm new files are tracked
+
+---
+
+## Open Questions
+
+> [!NOTE]
+> ARK publishes daily CSVs but the URL format can change. If scraping fails, the fallback is to manually seed `ark_journal.json` with ARKK's top holdings (available publicly from ETF.com). The agent will skip the ARK sim for that day and report the failure gracefully.
+
+> [!IMPORTANT]
+> The Earnings Calendar "BLOCK" rule (no new position the day before an earnings report) applies only to **new** buys. If you already hold the stock, the agent will follow normal stop-loss / trailing stop rules — it will NOT auto-sell before earnings.

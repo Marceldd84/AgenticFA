@@ -1,8 +1,13 @@
-# FA Agent Build — Task Tracker
+# Phase 2 Intelligence Upgrade — Task List
 
-## Completed Phases
-- [x] Phase 1: Core Project Files (Config, Memory, Telegram scripts)
-- [x] Phase 2: Live/Dry Run Setup & Manual Verification
-- [x] Phase 3: Schedule Setup (Daily cron at 10:00 AM ET)
-- [x] Phase 4: Strategy Optimization (18% limits, T+1 cash check, HTML Dashboard)
-- [x] Phase 5: Wolff Flagship Fund Simulation & Signal Integration (Separate $1,000 virtual account, dual Telegram reports, code pushed to GitHub)
+- [x] **1. agent_config.json** — Added `macro_regime` + `ark_simulation` blocks
+- [x] **2. SKILL.md** — Phase 0: Added Macro Regime Classifier (Step 4)
+- [x] **3. SKILL.md** — Phase 1 Sub-Agent A: Added Earnings Calendar section
+- [x] **4. SKILL.md** — Phase 1 Sub-Agent B: Added Form 4 + Congress trades + ARK holdings sections
+- [x] **5. SKILL.md** — Phase 2D: Expanded score modifier table (10 modifiers with +4.0 cap)
+- [x] **6. SKILL.md** — Phase 3.6: Added ARK Invest Simulation block (new parallel engine)
+- [x] **7. SKILL.md** — Phase 4: Added 3rd report (ARK sim) + Signal Intelligence section in HTML
+- [x] **8. memory/ark_journal.json** — Created initialized file
+- [x] **9. memory/ark_trades.json** — Created initialized file
+- [x] **10. .gitignore** — Added ark_last_report.txt
+- [x] **11. Git** — Committed and pushed (commit: 9465ada)
