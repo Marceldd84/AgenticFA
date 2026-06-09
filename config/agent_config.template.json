@@ -1,0 +1,33 @@
+{
+  "mode": "dry_run",
+  "account_number": "YOUR_ROBINHOOD_ACCOUNT_NUMBER",
+  "telegram": {
+    "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+    "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+  },
+  "risk_rules": {
+    "max_position_pct": 18,
+    "max_positions": 5,
+    "min_positions": 2,
+    "hard_stop_loss_pct": 8,
+    "take_profit_trigger_pct": 10,
+    "trailing_stop_pct": 5,
+    "cash_reserve_pct": 10,
+    "max_daily_trades": 3,
+    "min_stock_price": 5.00
+  },
+  "exclusions": {
+    "categories": ["penny_stocks", "chinese_adrs", "meme_stocks"],
+    "blocked_symbols": [
+      "GME", "AMC", "BBBY", "KOSS", "BB", "CLOV", "WISH", "WKHS",
+      "BABA", "PDD", "JD", "NIO", "XPEV", "LI", "BIDU", "BILI", "IQ", "TAL", "FUTU", "TME", "DIDI",
+      "TCEHY", "BEKE", "ZH", "YMM", "MNSO", "GDS", "KC", "VNET", "QFIN", "TIGR", "FINV"
+    ],
+    "notes": "Penny stocks filtered by min_stock_price ($5). Chinese ADRs and meme stocks by blocked_symbols list + agent judgment."
+  },
+  "schedule": {
+    "cron_utc": "0 14 * * 1-5",
+    "description": "10:00 AM ET (EDT) / 7:00 AM PT, Monday through Friday",
+    "timezone_note": "During EST (Nov-Mar), change to '0 15 * * 1-5' for 10:00 AM ET"
+  }
+}
