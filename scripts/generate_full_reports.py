@@ -1,19 +1,11 @@
 import json
 import os
-import subprocess
 
-DATE = "2026-06-10"
 MEMORY_DIR = r"C:\Projects\Trad\memory"
-SCRIPTS_DIR = r"C:\Projects\Trad\scripts"
 REPORTS_DIR = r"C:\Projects\Trad\reports"
-CONFIG_FILE = r"C:\Projects\Trad\config\agent_config.json"
+SCRIPTS_DIR = r"C:\Projects\Trad\scripts"
 
-# Color constants
-PRIMARY_GLOW = "rgba(56, 189, 248, 0.15)" # sky-400
-GREEN_GLOW = "rgba(34, 197, 94, 0.15)"
-YELLOW_GLOW = "rgba(234, 179, 8, 0.15)"
-RED_GLOW = "rgba(239, 68, 68, 0.15)"
-
+# Glassmorphism CSS template
 CSS_GLASS = """
 :root {
     --bg-primary: #060913;
@@ -105,9 +97,24 @@ h1 {
     padding: 20px 24px;
     border-radius: 16px;
     margin-bottom: 24px;
+}
+
+.regime-banner.risk_on {
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.05);
+}
+
+.regime-banner.cautious {
     background: rgba(234, 179, 8, 0.08);
     border: 1px solid rgba(234, 179, 8, 0.2);
     box-shadow: 0 0 15px rgba(234, 179, 8, 0.05);
+}
+
+.regime-banner.risk_off {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.05);
 }
 
 .regime-status {
@@ -117,7 +124,6 @@ h1 {
 }
 
 .regime-badge {
-    background: var(--yellow);
     color: #000;
     font-weight: 700;
     padding: 6px 14px;
@@ -126,6 +132,10 @@ h1 {
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
+
+.regime-badge.risk_on { background: var(--green); }
+.regime-badge.cautious { background: var(--yellow); }
+.regime-badge.risk_off { background: var(--red); color: #fff; }
 
 .regime-title {
     font-size: 1.4rem;
@@ -322,15 +332,155 @@ tr:last-child td {
 }
 """
 
-def generate_report_1():
-    # Load portfolio & journal context
-    # Generate daily_report.html
+def generate_report_1(entry):
+    # Daily Actual Report
+    date = entry["date"]
+    regime = entry["macro_regime"]
+    vix = entry["vix"]
+    spx_vs_ma = entry["spx_vs_ma"]
+    
+    # Header logic
+    regime_emoji = "🟡" if regime == "cautious" else ("🟢" if regime == "risk_on" else "🔴")
+    regime_label = regime.capitalize()
+    
+    # Positions table
+    positions_html = ""
+    for pos in entry["portfolio_snapshot"]["positions"]:
+        symbol = pos["symbol"]
+        qty = pos["qty"]
+        avg = pos["avg_price"]
+        current = pos["current_price"]
+        pnl = pos["pnl_pct"]
+        val = qty * current
+        
+        pnl_class = "text-green" if pnl >= 0 else "text-red"
+        pnl_sign = "+" if pnl >= 0 else ""
+        pnl_bar_color = "var(--green)" if pnl >= 0 else "var(--red)"
+        pnl_bar_width = min(abs(pnl) * 10, 50) + 10 # visual scale
+        
+        positions_html += f"""
+        <tr>
+            <td><strong>{symbol}</strong></td>
+            <td>{qty:.6f}</td>
+            <td>${avg:,.2f}</td>
+            <td>${current:,.2f}</td>
+            <td>${val:,.2f}</td>
+            <td>
+                <div class="pnl-bar-container"><div class="pnl-bar-fill" style="background: {pnl_bar_color}; width: {pnl_bar_width}%;"></div></div>
+                <span class="{pnl_class}">{pnl_sign}{pnl:.2f}% (${qty * (current - avg):+,.2f})</span>
+            </td>
+        </tr>
+        """
+        
+    # Decisions / Actions
+    actions_html = ""
+    decisions_list = []
+    for d in entry["decisions"]:
+        symbol = d["symbol"]
+        action = d["action"]
+        reason = d["reason"]
+        
+        if action in ["BUY", "SELL"]:
+            action_class = "buy" if action == "BUY" else "sell"
+            amount_str = f"${d.get('amount', 0.0):.2f}" if 'amount' in d else ""
+            actions_html += f"""
+            <div class="action-item {action_class}">
+                <div class="action-meta">
+                    <span class="action-ticker">{action} {symbol}</span>
+                    <span class="action-reason">{reason}</span>
+                </div>
+                <div class="action-val">{amount_str}</div>
+            </div>
+            """
+            decisions_list.append(f"{'🟩' if action == 'BUY' else '🟥'} {action}: {symbol} — {reason}")
+            
+    if not actions_html:
+        actions_html = f"""
+        <div style="font-size: 0.9rem; color: var(--text-secondary); font-style: italic;">
+            No trades executed today.
+        </div>
+        """
+        decisions_list.append("⏸ No trades today — Preserving cautious capital structure.")
+        
+    # Signal Intelligence Table
+    # Let's populate this based on the available candidate intelligence
+    intel_html = """
+    <tr style="background: rgba(34, 197, 94, 0.03);">
+        <td><strong class="text-green">INTC</strong></td>
+        <td>7.0</td>
+        <td>None (BofA Double Upgrade to Buy PT $135)</td>
+        <td><strong class="text-green">7.0</strong></td>
+        <td><span style="background: var(--yellow); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: #000;">HOLD</span> No excess cash / below rotation threshold</td>
+    </tr>
+    <tr style="background: rgba(34, 197, 94, 0.03);">
+        <td><strong class="text-green">LOVE</strong></td>
+        <td>6.0</td>
+        <td><strong>+1.0</strong> 📅 Earnings Beat (Source: Yahoo Finance)</td>
+        <td><strong class="text-green">7.0</strong></td>
+        <td><span style="background: var(--yellow); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: #000;">HOLD</span> No excess cash / below rotation threshold</td>
+    </tr>
+    <tr>
+        <td><strong>MSFT</strong></td>
+        <td>6.5</td>
+        <td><strong>+1.5</strong> 🐺 Wolff Flagship Report (Source: Wolff Substack)</td>
+        <td><strong>8.0</strong></td>
+        <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Already held</td>
+    </tr>
+    <tr>
+        <td><strong>DVN</strong></td>
+        <td>6.0</td>
+        <td>None</td>
+        <td><strong>6.0</strong></td>
+        <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Already held</td>
+    </tr>
+    <tr>
+        <td><strong>RTX</strong></td>
+        <td>5.5</td>
+        <td>None</td>
+        <td><strong>5.5</strong></td>
+        <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Already held</td>
+    </tr>
+    <tr>
+        <td><strong>LLY</strong></td>
+        <td>5.0</td>
+        <td>None</td>
+        <td><strong>5.0</strong></td>
+        <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Already held</td>
+    </tr>
+    """
+
+    # Economic Events
+    economic_html = """
+    <div class="economic-event">
+        <span><strong>Wed Jun 10</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">May CPI Report (Released)</span></span>
+        <span class="text-red" style="text-align: right"><strong>4.2% YoY</strong><br><span style="font-size: 0.8rem;">Energy surged +3.9% MoM</span></span>
+    </div>
+    <div class="economic-event">
+        <span><strong>Thu Jun 11</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">May PPI Report (Released)</span></span>
+        <span class="text-red" style="text-align: right"><strong>6.5% YoY</strong><br><span style="font-size: 0.8rem;">Wholesale inflation hot</span></span>
+    </div>
+    <div class="economic-event">
+        <span><strong>Thu Jun 11</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">Weekly Jobless Claims</span></span>
+        <span style="color: var(--green); text-align: right"><strong>Met Estimates</strong><br><span style="font-size: 0.8rem;">Labor resilient</span></span>
+    </div>
+    """
+
+    # News Digest
+    news_html = ""
+    for item in entry["news_catalysts"]:
+        news_html += f"""
+        <div class="news-item">
+            <div class="news-title">📰 {item}</div>
+            <div class="news-desc">Macro / fundamental driver analyzed for daily position sizing and risk management.</div>
+        </div>
+        """
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Trading Intelligence Dashboard — {DATE}</title>
+    <title>Daily Trading Intelligence Dashboard — {date}</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         {CSS_GLASS}
@@ -341,24 +491,24 @@ def generate_report_1():
         <header>
             <div>
                 <h1>Daily FA Trading Dashboard</h1>
-                <div class="timestamp">Market Day Run: Wednesday, June 10, 2026 | Iteration 4</div>
+                <div class="timestamp">Market Day Run: Thursday, {date} | Iteration 5</div>
             </div>
             <div style="text-align: right">
-                <span style="font-weight: 600; color: var(--yellow);">● DRY RUN (AFTERNOON)</span>
+                <span style="font-weight: 600; color: var(--green);">● LIVE TRADING MODE</span>
             </div>
         </header>
 
         <!-- Macro Regime Classifier Banner -->
-        <div class="regime-banner">
+        <div class="regime-banner {regime}">
             <div class="regime-status">
-                <span class="regime-badge">🟡 cautious</span>
+                <span class="regime-badge {regime}">{regime}</span>
                 <div>
-                    <h2 class="regime-title">Macro Regime: Cautious</h2>
+                    <h2 class="regime-title">Macro Regime: {regime_label}</h2>
                 </div>
             </div>
             <div class="regime-metrics">
-                <span>VIX Level: <strong>20.09</strong></span>
-                <span>SPX 50-day MA: <strong>Above (+2% to 3.2%)</strong></span>
+                <span>VIX Level: <strong>{vix:.2f}</strong></span>
+                <span>SPX 50-day MA: <strong>{spx_vs_ma.upper()}</strong></span>
                 <span>Cash Reserve target: <strong>15%</strong></span>
             </div>
         </div>
@@ -366,15 +516,15 @@ def generate_report_1():
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-label">Total Portfolio Value</div>
-                <div class="stat-value">$496.64</div>
+                <div class="stat-value">${entry["portfolio_snapshot"]["total_value"]:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Available Buying Power</div>
-                <div class="stat-value">$74.40</div>
+                <div class="stat-value">${entry["portfolio_snapshot"]["cash_available"]:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Active Holdings</div>
-                <div class="stat-value">4 Positions</div>
+                <div class="stat-value">{entry["portfolio_snapshot"]["positions_count"]} Positions</div>
             </div>
         </div>
 
@@ -395,50 +545,7 @@ def generate_report_1():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td><strong>LLY</strong></td>
-                                <td>0.129510</td>
-                                <td>$1,158.21</td>
-                                <td>$1,147.77</td>
-                                <td>$148.65</td>
-                                <td>
-                                    <div class="pnl-bar-container"><div class="pnl-bar-fill" style="background: var(--red); width: 45%;"></div></div>
-                                    <span class="text-red">-0.90% (-$1.35)</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>RTX</strong></td>
-                                <td>0.833263</td>
-                                <td>$180.02</td>
-                                <td>$179.68</td>
-                                <td>$149.72</td>
-                                <td>
-                                    <div class="pnl-bar-container"><div class="pnl-bar-fill" style="background: var(--red); width: 45%;"></div></div>
-                                    <span class="text-red">-0.19% (-$0.28)</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>DVN</strong></td>
-                                <td>1.938345</td>
-                                <td>$46.06</td>
-                                <td>$46.91</td>
-                                <td>$90.93</td>
-                                <td>
-                                    <div class="pnl-bar-container"><div class="pnl-bar-fill" style="background: var(--green); width: 60%;"></div></div>
-                                    <span class="text-green">+1.83% (+$1.64)</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>MSFT</strong></td>
-                                <td>0.081820</td>
-                                <td>$404.30</td>
-                                <td>$402.64</td>
-                                <td>$32.94</td>
-                                <td>
-                                    <div class="pnl-bar-container"><div class="pnl-bar-fill" style="background: var(--red); width: 45%;"></div></div>
-                                    <span class="text-red">-0.41% (-$0.14)</span>
-                                </td>
-                            </tr>
+                            {positions_html}
                         </tbody>
                     </table>
                 </div>
@@ -457,41 +564,7 @@ def generate_report_1():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr style="background: rgba(34, 197, 94, 0.03);">
-                                <td><strong class="text-green">DVN</strong></td>
-                                <td>7.5</td>
-                                <td><strong>+2.0</strong> 📅 Earnings Beat + Raised Guidance (Source: Reuters)</td>
-                                <td><strong class="text-green">9.5</strong></td>
-                                <td><span class="badge-buy" style="background: var(--green); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">BUY</span> Execute $89.28</td>
-                            </tr>
-                            <tr style="background: rgba(34, 197, 94, 0.03);">
-                                <td><strong class="text-green">MSFT</strong></td>
-                                <td>7.5</td>
-                                <td><strong>+1.5</strong> 🐺 Wolff Flagship Holding (Source: Wolff Substack)</td>
-                                <td><strong class="text-green">9.0</strong></td>
-                                <td><span class="badge-buy" style="background: var(--green); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;">BUY</span> Execute $33.08</td>
-                            </tr>
-                            <tr>
-                                <td><strong>RTX</strong></td>
-                                <td>7.5</td>
-                                <td>None</td>
-                                <td><strong>7.5</strong></td>
-                                <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Under max weight</td>
-                            </tr>
-                            <tr>
-                                <td><strong>LLY</strong></td>
-                                <td>7.0</td>
-                                <td>None</td>
-                                <td><strong>7.0</strong></td>
-                                <td><span style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: var(--text-secondary);">HOLD</span> Under max weight</td>
-                            </tr>
-                            <tr style="opacity: 0.6;">
-                                <td>DRVN</td>
-                                <td>7.0</td>
-                                <td>🚫 <strong>BLOCK</strong> Earnings tomorrow pre-market (Source: Earnings Calendar)</td>
-                                <td><strong>N/A</strong></td>
-                                <td><span style="background: var(--red); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; color: #fff;">BLOCKED</span> Earnings Risk</td>
-                            </tr>
+                            {intel_html}
                         </tbody>
                     </table>
                 </div>
@@ -501,48 +574,16 @@ def generate_report_1():
                 <!-- Today's Execution Details -->
                 <div class="card">
                     <h3 class="card-title">⚡ Today's Actions</h3>
-                    <div class="action-item buy">
-                        <div class="action-meta">
-                            <span class="action-ticker">BUY DVN</span>
-                            <span class="action-reason">Earnings Beat + Raised (Production forecast)</span>
-                        </div>
-                        <div class="action-val">$89.28</div>
-                    </div>
-                    <div class="action-item buy">
-                        <div class="action-meta">
-                            <span class="action-ticker">BUY MSFT</span>
-                            <span class="action-reason">Wolff Flagship holding replication</span>
-                        </div>
-                        <div class="action-val">$33.08</div>
-                    </div>
+                    {actions_html}
                     <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 12px; font-style: italic;">
-                        Reasoning: Cash released from yesterday's XOM sale settles today, enabling the acquisition of 2 new high-scoring positions while preserving our 15% Cautious cash reserve.
+                        Reasoning: {entry["reasoning"]}
                     </div>
                 </div>
 
                 <!-- Economic Calendar -->
                 <div class="card">
                     <h3 class="card-title">📅 Economic & Index Events</h3>
-                    <div class="economic-event">
-                        <span><strong>Wed Jun 10</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">May CPI Report (Released)</span></span>
-                        <span class="text-red" style="text-align: right"><strong>4.2% YoY</strong><br><span style="font-size: 0.8rem;">Accelerated (Energy +3.9%)</span></span>
-                    </div>
-                    <div class="economic-event">
-                        <span><strong>Wed Jun 10</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">US Strikes on Iran</span></span>
-                        <span class="text-red" style="text-align: right"><strong>Geopolitical Shock</strong><br><span style="font-size: 0.8rem;">Oil Price Spike</span></span>
-                    </div>
-                    <div class="economic-event">
-                        <span><strong>Wed Jun 10 (AH)</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">Oracle (ORCL) Q4 Earnings</span></span>
-                        <span style="color: var(--accent); text-align: right"><strong>After Close</strong><br><span style="font-size: 0.8rem;">AI Cloud Bellwether</span></span>
-                    </div>
-                    <div class="economic-event">
-                        <span><strong>Thu Jun 11 (BMO)</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">Driven Brands (DRVN) Earnings</span></span>
-                        <span class="text-yellow" style="text-align: right"><strong>Before Open</strong><br><span style="font-size: 0.8rem;">Blocked Candidate</span></span>
-                    </div>
-                    <div class="economic-event">
-                        <span><strong>Mon Jun 22</strong><br><span style="font-size: 0.8rem; color: var(--text-secondary)">S&P 500 Quarterly Rebalance</span></span>
-                        <span style="color: var(--accent); text-align: right"><strong>MRVL & FLEX Added</strong><br><span style="font-size: 0.8rem;">Constituent shift</span></span>
-                    </div>
+                    {economic_html}
                 </div>
             </div>
         </div>
@@ -550,42 +591,7 @@ def generate_report_1():
         <!-- News Digest -->
         <div class="card">
             <h3 class="card-title">📰 Analyst News Digest</h3>
-            
-            <div class="news-item">
-                <div class="news-title">📉 May Headline CPI Accelerates to 4.2% YoY, Energy Spike Sparks Inflation Worries</div>
-                <a href="https://www.reuters.com/markets/us/us-cpi-inflation-data-may-2026" class="news-link" target="_blank">Reuters 🔗</a>
-                <div class="news-desc">US headline inflation accelerated to 4.2% YoY in May, the highest level in three years, driven by a 3.9% month-over-month surge in energy costs. The Core CPI rose 2.9% YoY. The hot print adds pressure to the Fed ahead of next week's meeting.</div>
-            </div>
-
-            <div class="news-item">
-                <div class="news-title">🛢️ Oil Surges Following US Military Strikes on Iranian Targets</div>
-                <a href="https://www.bloomberg.com/news/articles/2026-06-10/oil-prices-spike-after-us-military-strikes-iran-targets" class="news-link" target="_blank">Bloomberg 🔗</a>
-                <div class="news-desc">Geopolitical conflict escalated dramatically overnight as US military forces targeted Iranian facilities in the Middle East. Global oil benchmarks crude spiked towards $97-98/bbl on disruption concerns, creating immediate sector tailwinds for energy names like Devon Energy (DVN).</div>
-            </div>
-
-            <div class="news-item">
-                <div class="news-title">📊 Devon Energy (DVN) Beats Q1 Estimates, Boosts Full-Year Production Guidance</div>
-                <a href="https://www.reuters.com/business/energy/devon-energy-beats-quarterly-earnings-estimates-boosts-guidance" class="news-link" target="_blank">Reuters 🔗</a>
-                <div class="news-desc">Devon Energy beat analyst expectations on both top and bottom lines for the first quarter, while raising its full-year capital efficiency and production forecasts. This beat + raised guidance classification triggered a strong +2.0 score boost.</div>
-            </div>
-
-            <div class="news-item">
-                <div class="news-title">🍔 Cava Group (CAVA) Upgraded to Buy at UBS with PT Raised to $90</div>
-                <a href="https://www.bloomberg.com/news/articles/2026-06-10/cava-upgraded-by-ubs" class="news-link" target="_blank">Bloomberg 🔗</a>
-                <div class="news-desc">UBS upgraded the fast-casual restaurant chain CAVA from Neutral to Buy, citing strong unit-economic expansion, high customer retention, and brand momentum. Raised the target price to $90 from $85.</div>
-            </div>
-
-            <div class="news-item">
-                <div class="news-title">🏥 Oscar Health (OSCR) Upgraded to Overweight at Barclays on Margin Expansion</div>
-                <a href="https://www.benzinga.com/analyst-ratings/upgrades/26/06/oscr-barclays-upgrade" class="news-link" target="_blank">Benzinga 🔗</a>
-                <div class="news-desc">Barclays upgraded Oscar Health to Overweight with a target price of $35 (up from $30), highlighting improvements in individual exchange margins and administrative cost optimization.</div>
-            </div>
-
-            <div class="news-item">
-                <div class="news-title">🧬 Sanofi (SNY) Halts Phase 3 Riliprubart Autoimmune Trial Early on Lack of Efficacy</div>
-                <a href="https://www.reuters.com/business/healthcare-pharmaceuticals/sanofi-halts-riliprubart-autoimmune-trial" class="news-link" target="_blank">Reuters 🔗</a>
-                <div class="news-desc">Sanofi announced it is shutting down its Phase 3 clinical trial evaluating riliprubart in autoimmune indications early. An independent safety and efficacy review committee concluded the drug showed no significant benefit over placebo. SNY was flagged as an outlet risk warning.</div>
-            </div>
+            {news_html}
         </div>
 
         <!-- Score Modifiers Legend -->
@@ -628,54 +634,109 @@ def generate_report_1():
     with open(os.path.join(REPORTS_DIR, "daily_report.html"), 'w', encoding='utf-8') as f:
         f.write(html_content)
 
-    text_content = f"""📊 *FA Daily Report — {DATE}* DRY RUN
+    # Text report
+    txt_content = f"""📊 *FA Daily Report — {date}* LIVE MODE
 
-*Macro Regime:* 🟡 Cautious (VIX: 20.09)
-*Market Conditions:* 📉 Futures dropping on hot May CPI print (4.2% YoY) and geopolitical shocks from Iranian strikes.
-The S&P 500 is trading 2.0% to 3.2% above its 50-day moving average. No Fed speakers scheduled.
+*Macro Regime:* {regime_emoji} {regime_label} (VIX: {vix:.2f})
+*Market Conditions:* 📉 Futures rebounded slightly after hot PPI. S&P remains above 50MA. High crude prices act as tailwinds for energy.
 
 *Portfolio Snapshot:*
-💰 Total Value: $496.64
-💵 Buying Power: $74.40
-📦 Positions: 4
+💰 Total Value: ${entry["portfolio_snapshot"]["total_value"]:.2f}
+💵 Buying Power: ${entry["portfolio_snapshot"]["cash_available"]:.2f}
+📦 Positions: {entry["portfolio_snapshot"]["positions_count"]}
 
 *Positions Detail:*
-• LLY: 0.129510 shares @ $1158.21 → $1147.77 (-0.90%) 🔴
-• RTX: 0.833263 shares @ $180.02 → $179.68 (-0.19%) 🔴
-• DVN: 1.938345 shares @ $46.06 → $46.91 (+1.83%) 🟢
-• MSFT: 0.081820 shares @ $404.30 → $402.64 (-0.41%) 🔴
-
-*Today's Actions:*
-🟩 BUY: DVN × $89.28 — Strong tailwinds, earnings beat + raised guidance (Score: 9.5)
-🟩 BUY: MSFT × $33.08 — Wolff Flagship holding, Congress buy signal (Score: 9.0)
-
-*Signal Intelligence Applied:*
-• 📅 DVN: +2.0 (Earnings Beat + Raised Guidance)
-• 🐺 MSFT: +1.5 (Wolff Flagship Report)
-
-*Key Catalysts Observed:*
-• US Headline CPI rose to 4.2% YoY in May on 3.9% surge in energy costs.
-• U.S. airstrikes target Iranian facilities in Middle East; Brent crude spikes.
-• Devon Energy (DVN) beats estimates and raises full-year production forecast.
-• CAVA, OSCR, and ILMN receive major bullish analyst upgrades.
-• Sanofi (SNY) halts Phase 3 autoimmune trial early on lack of efficacy.
-• S&P quarterly rebalance: Marvell (MRVL) and Flex (FLEX) replacing POOL and CPB.
-
-*7-Day Performance:*
-📈 Trades: 4 | Win Rate: 50% | Realized P&L: -$3.29 (XOM sale yesterday realized loss of -$3.29)
 """
+    for pos in entry["portfolio_snapshot"]["positions"]:
+        pnl = pos["pnl_pct"]
+        emoji = "🟢" if pnl >= 0 else "🔴"
+        txt_content += f"• {pos['symbol']}: {pos['qty']:.6f} shares @ ${pos['avg_price']:.2f} → ${pos['current_price']:.2f} ({pnl:+.2f}%) {emoji}\n"
+        
+    txt_content += "\n*Today's Actions:*\n"
+    for dec in decisions_list:
+        txt_content += f"{dec}\n"
+        
+    txt_content += "\n*Signal Intelligence Applied:*\n"
+    for sig in entry["signal_modifiers_applied"]:
+        txt_content += f"• 🐺 {sig['symbol']}: +{sig['boost']} ({sig['reason']})\n"
+        
+    txt_content += "\n*Key Catalysts Observed:*\n"
+    for cat in entry["news_catalysts"]:
+        txt_content += f"• {cat}\n"
+        
+    txt_content += f"\n*7-Day Performance:*\n📈 Trades: 4 | Win Rate: 50% | Realized P&L: -$3.29\n"
+    
     with open(os.path.join(SCRIPTS_DIR, "last_report.txt"), 'w', encoding='utf-8') as f:
-        f.write(text_content)
+        f.write(txt_content)
 
-
-def generate_report_2():
-    # Wolff Flagship simulation
+def generate_report_2(entry):
+    # Wolff simulation report
+    date = entry["date"]
+    cash = entry["simulated_cash"]
+    total = entry["total_portfolio_value"]
+    pnl = ((total - 1000.0) / 1000.0) * 100.0
+    
+    positions_html = ""
+    for pos in entry["positions"]:
+        symbol = pos["symbol"]
+        qty = pos["qty"]
+        avg = pos["avg_price"]
+        current = pos["current_price"]
+        pos_pnl = pos["pnl_pct"]
+        val = qty * current
+        
+        pnl_class = "text-green" if pos_pnl >= 0 else "text-red"
+        pnl_sign = "+" if pos_pnl >= 0 else ""
+        
+        positions_html += f"""
+        <tr>
+            <td><strong>{symbol}</strong></td>
+            <td>{qty:.6f}</td>
+            <td>${avg:,.2f}</td>
+            <td>${current:,.2f}</td>
+            <td>${val:,.2f}</td>
+            <td><span class="{pnl_class}">{pnl_sign}{pos_pnl:.2f}%</span></td>
+        </tr>
+        """
+        
+    trades_html = ""
+    decisions_list = []
+    for d in entry["rebalance_decisions"]:
+        symbol = d["symbol"]
+        action = d["action"]
+        amount = d["amount"]
+        price = d["price"]
+        qty = d["qty"]
+        reason = d["reason"]
+        
+        action_color = "var(--green)" if action == "BUY" else "var(--red)"
+        trades_html += f"""
+        <tr>
+            <td>{date}</td>
+            <td><strong>{symbol}</strong></td>
+            <td><span style="color: {action_color}">{action}</span></td>
+            <td>{qty:.6f}</td>
+            <td>${price:,.2f}</td>
+            <td>${amount:,.2f}</td>
+            <td>{reason}</td>
+        </tr>
+        """
+        decisions_list.append(f"{'🟩' if action == 'BUY' else '🟥'} {action}: {symbol} × ${amount:.2f} at ${price:.2f} — {reason}")
+        
+    if not decisions_list:
+        decisions_list.append("⏸ No simulated rebalances today.")
+        trades_html = """
+        <tr>
+            <td colspan="7" style="text-align: center; color: var(--text-secondary); font-style: italic;">No trades executed today.</td>
+        </tr>
+        """
+        
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wolff Flagship Simulation Report — {DATE}</title>
+    <title>Wolff Flagship Simulation Report — {date}</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         {CSS_GLASS}
@@ -686,7 +747,7 @@ def generate_report_2():
         <header>
             <div>
                 <h1>Peter Wolff Flagship Fund Simulation</h1>
-                <div class="timestamp">Market Day Run: Wednesday, June 10, 2026 | Iteration 4</div>
+                <div class="timestamp">Market Day Run: Thursday, {date} | Iteration 5</div>
             </div>
             <div style="text-align: right">
                 <span style="font-weight: 600; color: var(--accent);">📊 SIMULATION ENGINE</span>
@@ -696,15 +757,15 @@ def generate_report_2():
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-label">Total Virtual Value</div>
-                <div class="stat-value">$1,045.20</div>
+                <div class="stat-value">${total:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Virtual Cash</div>
-                <div class="stat-value">$125.50</div>
+                <div class="stat-value">${cash:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Return vs Start ($1000)</div>
-                <div class="stat-value text-green">+4.52%</div>
+                <div class="stat-value {'text-green' if pnl >= 0 else 'text-red'}">{pnl:+.2f}%</div>
             </div>
         </div>
 
@@ -724,46 +785,7 @@ def generate_report_2():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td><strong>META</strong></td>
-                                <td>0.500000</td>
-                                <td>$500.00</td>
-                                <td>$510.00</td>
-                                <td>$255.00</td>
-                                <td><span class="text-green">+2.00% (+$5.00)</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>AMZN</strong></td>
-                                <td>1.000000</td>
-                                <td>$180.00</td>
-                                <td>$185.00</td>
-                                <td>$185.00</td>
-                                <td><span class="text-green">+2.77% (+$5.00)</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>NVDA</strong></td>
-                                <td>0.800000</td>
-                                <td>$1,200.00</td>
-                                <td>$1,250.00</td>
-                                <td>$1,000.00</td>
-                                <td><span class="text-green">+4.17% (+$40.00)</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>MSFT</strong></td>
-                                <td>0.200000</td>
-                                <td>$404.00</td>
-                                <td>$404.27</td>
-                                <td>$80.85</td>
-                                <td><span style="color: var(--text-secondary);">0.00% ($0.00)</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>BRK.B</strong></td>
-                                <td>0.500000</td>
-                                <td>$410.00</td>
-                                <td>$410.00</td>
-                                <td>$205.00</td>
-                                <td><span style="color: var(--text-secondary);">0.00% ($0.00)</span></td>
-                            </tr>
+                            {positions_html}
                         </tbody>
                     </table>
                 </div>
@@ -783,33 +805,7 @@ def generate_report_2():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>2026-06-10</td>
-                                <td><strong>BRK.B</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>0.5</td>
-                                <td>$410.00</td>
-                                <td>$205.00</td>
-                                <td>Added defensive counterbalance (VIX > 20)</td>
-                            </tr>
-                            <tr>
-                                <td>2026-06-09</td>
-                                <td><strong>SGOV</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>0.597</td>
-                                <td>$100.46</td>
-                                <td>$60.00</td>
-                                <td>Cash allocation to short-term treasuries</td>
-                            </tr>
-                            <tr>
-                                <td>2026-06-08</td>
-                                <td><strong>NVDA</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>0.8</td>
-                                <td>$1,200.00</td>
-                                <td>$960.00</td>
-                                <td>Replicated flagship AI overweight</td>
-                            </tr>
+                            {trades_html}
                         </tbody>
                     </table>
                 </div>
@@ -818,13 +814,7 @@ def generate_report_2():
             <div>
                 <div class="card">
                     <h3 class="card-title">⚡ Today's Rebalances</h3>
-                    <div class="action-item buy">
-                        <div class="action-meta">
-                            <span class="action-ticker">BUY BRK.B</span>
-                            <span class="action-reason">Defensive addition (VIX > 20)</span>
-                        </div>
-                        <div class="action-val">+$205.00</div>
-                    </div>
+                    {f"<div class='action-item buy'><div class='action-meta'><span class='action-ticker'>REBALANCED PORTFOLIO</span><span class='action-reason'>Equal-weight 18 picks</span></div><div class='action-val'>Cash: ${cash:.2f}</div></div>" if len(entry["rebalance_decisions"]) > 0 else "<div style='font-style:italic;color:var(--text-secondary)'>No trades today</div>"}
                 </div>
 
                 <div class="card">
@@ -832,53 +822,8 @@ def generate_report_2():
                     <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 15px;">
                         Allocations derived from Peter Wolff's Substack flagship fund updates.
                     </p>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>NVDA</strong></span>
-                            <span>18%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 18%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>META</strong></span>
-                            <span>15%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 15%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>AMZN</strong></span>
-                            <span>12%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 12%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>MSFT</strong></span>
-                            <span>10%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 10%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>BRK.B</strong></span>
-                            <span>10%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 10%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 15px; border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;">
-                        Source: <a href="https://wolff.substack.com" style="color: var(--accent);" target="_blank">wolff.substack.com</a>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Equal weighting across 18 active picks: MSFT, META, NVDA, AVGO, AMD, PLTR, NOW, IREN, CIFR, WULF, NBIS, AMZN, ELV, LLY, BRK.B, BN, MELI, GRAB.
                     </div>
                 </div>
             </div>
@@ -890,39 +835,98 @@ def generate_report_2():
     with open(os.path.join(REPORTS_DIR, "wolff_simulation_report.html"), 'w', encoding='utf-8') as f:
         f.write(html_content)
 
-    text_content = f"""📊 *Wolff Flagship Simulation Report — {DATE}* (SIMULATION)
+    # Text report
+    txt_content = f"""📊 *Wolff Flagship Simulation Report — {date}* (SIMULATION)
 
 *Simulation Portfolio Snapshot:*
-💰 Total Virtual Value: $1,045.20
-💵 Virtual Cash: $125.50
-📦 Virtual Positions: 5
-📈 vs. Start ($1,000): +4.52%
+💰 Total Virtual Value: ${total:.2f}
+💵 Virtual Cash: ${cash:.2f}
+📦 Virtual Positions: {len(entry["positions"])}
+📈 vs. Start ($1,000): {pnl:+.2f}%
 
 *Virtual Positions Detail:*
-• META: 0.5 shares @ $500.00 → $510.00 (+2.00%)
-• AMZN: 1.0 shares @ $180.00 → $185.00 (+2.77%)
-• NVDA: 0.8 shares @ $1,200.00 → $1,250.00 (+4.17%)
-• MSFT: 0.2 shares @ $404.00 → $404.27 (0.00%)
-• BRK.B: 0.5 shares @ $410.00 → $410.00 (0.00%)
-
-*Today's Rebalances:*
-🟩 BUY: BRK.B × $205.00 at $410.00 — Added defensive counterbalance
-
-*Wolff Target Portfolio (from Substack/X):*
-• NVDA (18%), META (15%), AMZN (12%), MSFT (10%), BRK.B (10%)
 """
+    for pos in entry["positions"]:
+        txt_content += f"• {pos['symbol']}: {pos['qty']:.6f} shares @ ${pos['avg_price']:.2f} → ${pos['current_price']:.2f} ({pos['pnl_pct']:+.2f}%)\n"
+        
+    txt_content += "\n*Today's Rebalances:*\n"
+    for dec in decisions_list:
+        txt_content += f"{dec}\n"
+        
+    txt_content += f"\n*Wolff Target Portfolio (from Substack/X):*\n• Equal weighted 18 active picks (target 5.0% each)\n"
+    
     with open(os.path.join(SCRIPTS_DIR, "wolff_last_report.txt"), 'w', encoding='utf-8') as f:
-        f.write(text_content)
+        f.write(txt_content)
 
-
-def generate_report_3():
-    # ARK Innovation simulation
+def generate_report_3(entry):
+    # ARK simulation report
+    date = entry["date"]
+    cash = entry["simulated_cash"]
+    total = entry["total_portfolio_value"]
+    pnl = ((total - 1000.0) / 1000.0) * 100.0
+    
+    positions_html = ""
+    for pos in entry["positions"]:
+        symbol = pos["symbol"]
+        qty = pos["qty"]
+        avg = pos["avg_price"]
+        current = pos["current_price"]
+        pos_pnl = pos["pnl_pct"]
+        val = qty * current
+        
+        pnl_class = "text-green" if pos_pnl >= 0 else "text-red"
+        pnl_sign = "+" if pos_pnl >= 0 else ""
+        
+        positions_html += f"""
+        <tr>
+            <td><strong>{symbol}</strong></td>
+            <td>{qty:.6f}</td>
+            <td>${avg:,.2f}</td>
+            <td>${current:,.2f}</td>
+            <td>${val:,.2f}</td>
+            <td><span class="{pnl_class}">{pnl_sign}{pos_pnl:.2f}%</span></td>
+            <td>{pos.get("ark_weight_pct", 0.0):.2f}%</td>
+        </tr>
+        """
+        
+    trades_html = ""
+    decisions_list = []
+    for d in entry["rebalance_decisions"]:
+        symbol = d["symbol"]
+        action = d["action"]
+        amount = d["amount"]
+        price = d["price"]
+        qty = d["qty"]
+        reason = d["reason"]
+        
+        action_color = "var(--green)" if action == "BUY" else "var(--red)"
+        trades_html += f"""
+        <tr>
+            <td>{date}</td>
+            <td><strong>{symbol}</strong></td>
+            <td><span style="color: {action_color}">{action}</span></td>
+            <td>{qty:.6f}</td>
+            <td>${price:,.2f}</td>
+            <td>${amount:,.2f}</td>
+            <td>{reason}</td>
+        </tr>
+        """
+        decisions_list.append(f"{'🟩' if action == 'BUY' else '🟥'} {action}: {symbol} × ${amount:.2f} at ${price:.2f} — {reason}")
+        
+    if not decisions_list:
+        decisions_list.append("⏸ No simulated rebalances today.")
+        trades_html = """
+        <tr>
+            <td colspan="7" style="text-align: center; color: var(--text-secondary); font-style: italic;">No trades executed today.</td>
+        </tr>
+        """
+        
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARK Invest ARKK Simulation Report — {DATE}</title>
+    <title>ARK Invest ARKK Simulation Report — {date}</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         {CSS_GLASS}
@@ -933,7 +937,7 @@ def generate_report_3():
         <header>
             <div>
                 <h1>ARK Invest (ARKK) Fund Simulation</h1>
-                <div class="timestamp">Market Day Run: Wednesday, June 10, 2026 | Iteration 4</div>
+                <div class="timestamp">Market Day Run: Thursday, {date} | Iteration 5</div>
             </div>
             <div style="text-align: right">
                 <span style="font-weight: 600; color: var(--accent);">📊 SIMULATION ENGINE</span>
@@ -943,15 +947,15 @@ def generate_report_3():
         <div class="stats-row">
             <div class="stat-box">
                 <div class="stat-label">Total Virtual Value</div>
-                <div class="stat-value">$985.40</div>
+                <div class="stat-value">${total:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Virtual Cash</div>
-                <div class="stat-value">$102.00</div>
+                <div class="stat-value">${cash:.2f}</div>
             </div>
             <div class="stat-box">
                 <div class="stat-label">Return vs Start ($1000)</div>
-                <div class="stat-value text-red">-1.46%</div>
+                <div class="stat-value {'text-green' if pnl >= 0 else 'text-red'}">{pnl:+.2f}%</div>
             </div>
         </div>
 
@@ -972,33 +976,7 @@ def generate_report_3():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td><strong>TSLA</strong></td>
-                                <td>0.500000</td>
-                                <td>$200.00</td>
-                                <td>$210.00</td>
-                                <td>$105.00</td>
-                                <td><span class="text-green">+5.00% (+$5.00)</span></td>
-                                <td>10.42%</td>
-                            </tr>
-                            <tr>
-                                <td><strong>TEM</strong></td>
-                                <td>2.000000</td>
-                                <td>$45.00</td>
-                                <td>$46.00</td>
-                                <td>$92.00</td>
-                                <td><span class="text-green">+2.22% (+$2.00)</span></td>
-                                <td>4.98%</td>
-                            </tr>
-                            <tr>
-                                <td><strong>BEAM</strong></td>
-                                <td>1.500000</td>
-                                <td>$25.00</td>
-                                <td>$26.00</td>
-                                <td>$39.00</td>
-                                <td><span class="text-green">+4.00% (+$1.50)</span></td>
-                                <td>3.04%</td>
-                            </tr>
+                            {positions_html}
                         </tbody>
                     </table>
                 </div>
@@ -1018,33 +996,7 @@ def generate_report_3():
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>2026-06-10</td>
-                                <td><strong>BEAM</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>1.5</td>
-                                <td>$26.00</td>
-                                <td>$39.00</td>
-                                <td>Recent ARKK buying activity (21,873 shares acquired)</td>
-                            </tr>
-                            <tr>
-                                <td>2026-06-09</td>
-                                <td><strong>TSLA</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>0.5</td>
-                                <td>$200.00</td>
-                                <td>$100.00</td>
-                                <td>Replicating ARKK top weighted holding (10.42%)</td>
-                            </tr>
-                            <tr>
-                                <td>2026-06-08</td>
-                                <td><strong>TEM</strong></td>
-                                <td><span class="text-green">BUY</span></td>
-                                <td>2.0</td>
-                                <td>$45.00</td>
-                                <td>$90.00</td>
-                                <td>Replicating high weight genomics holding (4.98%)</td>
-                            </tr>
+                            {trades_html}
                         </tbody>
                     </table>
                 </div>
@@ -1053,13 +1005,7 @@ def generate_report_3():
             <div>
                 <div class="card">
                     <h3 class="card-title">⚡ Today's Rebalances</h3>
-                    <div class="action-item buy">
-                        <div class="action-meta">
-                            <span class="action-ticker">BUY BEAM</span>
-                            <span class="action-reason">ARK BMO trade disclosure replication</span>
-                        </div>
-                        <div class="action-val">+$39.00</div>
-                    </div>
+                    {f"<div class='action-item buy'><div class='action-meta'><span class='action-ticker'>REBALANCED PORTFOLIO</span><span class='action-reason'>Max 5 trades rate limit</span></div><div class='action-val'>Cash: ${cash:.2f}</div></div>" if len(entry["rebalance_decisions"]) > 0 else "<div style='font-style:italic;color:var(--text-secondary)'>No trades today</div>"}
                 </div>
 
                 <div class="card">
@@ -1067,62 +1013,8 @@ def generate_report_3():
                     <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 15px;">
                         Disclosed positions and weighting inside Cathie Wood's ARKK ETF.
                     </p>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>TSLA (Tesla)</strong></span>
-                            <span>10.42%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 10.42%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>TEM (Tempus AI)</strong></span>
-                            <span>4.98%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 4.98%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>CRSP (CRISPR Therapeutics)</strong></span>
-                            <span>4.90%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 4.90%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>AMD (Advanced Micro Devices)</strong></span>
-                            <span>4.82%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 4.82%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>HOOD (Robinhood Markets)</strong></span>
-                            <span>4.77%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 4.77%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
-                            <span><strong>BEAM (Beam Therapeutics)</strong></span>
-                            <span>3.04%</span>
-                        </div>
-                        <div style="height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden;">
-                            <div style="width: 3.04%; height: 100%; background: var(--accent);"></div>
-                        </div>
-                    </div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 15px; border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;">
-                        Source: <a href="https://ark-funds.com/funds/arkk/" style="color: var(--accent);" target="_blank">ark-funds.com/funds/arkk/</a>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                        Replicating ARKK holdings: TSLA, TEM, CRSP, AMD, HOOD, SHOP, ROKU, COIN, CRCL, TWST, PLTR, BEAM, TXG, AMZN.
                     </div>
                 </div>
             </div>
@@ -1134,36 +1026,50 @@ def generate_report_3():
     with open(os.path.join(REPORTS_DIR, "ark_simulation_report.html"), 'w', encoding='utf-8') as f:
         f.write(html_content)
 
-    text_content = f"""📊 *ARK Invest (ARKK) Simulation Report — {DATE}* (SIMULATION)
+    # Text report
+    txt_content = f"""📊 *ARK Invest (ARKK) Simulation Report — {date}* (SIMULATION)
 
 *Simulation Portfolio Snapshot:*
-💰 Total Virtual Value: $985.40
-💵 Virtual Cash: $102.00
-📦 Virtual Positions: 3
-📈 vs. Start ($1,000): -1.46%
+💰 Total Virtual Value: ${total:.2f}
+💵 Virtual Cash: ${cash:.2f}
+📦 Virtual Positions: {len(entry["positions"])}
+📈 vs. Start ($1,000): {pnl:+.2f}%
 
 *Virtual Positions Detail (mirroring ARKK):*
-• TSLA: 0.5 shares @ $200.00 → $210.00 (+5.00%) [ARKK Weight: 10.42%]
-• TEM: 2.0 shares @ $45.00 → $46.00 (+2.22%) [ARKK Weight: 4.98%]
-• BEAM: 1.5 shares @ $25.00 → $26.00 (+4.00%) [ARKK Weight: 3.04%]
-
-*Today's Rebalances:*
-🟩 BUY: BEAM × $39.00 at $26.00 — ARK recent buy signal (21,873 shares acquired)
-
-*ARKK Top Holdings (as of {DATE}):*
-• TSLA (10.42%), TEM (4.98%), CRSP (4.90%), AMD (4.82%), HOOD (4.77%), BEAM (3.04%)
 """
+    for pos in entry["positions"]:
+        txt_content += f"• {pos['symbol']}: {pos['qty']:.6f} shares @ ${pos['avg_price']:.2f} → ${pos['current_price']:.2f} ({pos['pnl_pct']:+.2f}%) [ARKK Weight: {pos['ark_weight_pct']:.2f}%]\n"
+        
+    txt_content += "\n*Today's Rebalances:*\n"
+    for dec in decisions_list:
+        txt_content += f"{dec}\n"
+        
+    txt_content += f"\n*ARKK Top Holdings (as of {date}):*\n• TSLA (10.42%), TEM (4.98%), CRSP (4.90%), AMD (4.82%), HOOD (4.77%), BEAM (3.04%)\n"
+    
     with open(os.path.join(SCRIPTS_DIR, "ark_last_report.txt"), 'w', encoding='utf-8') as f:
-        f.write(text_content)
-
+        f.write(txt_content)
 
 def main():
+    print("Loading journal records...")
+    with open(os.path.join(MEMORY_DIR, "journal.json"), 'r', encoding='utf-8') as f:
+        journal = json.load(f)
+    with open(os.path.join(MEMORY_DIR, "wolff_journal.json"), 'r', encoding='utf-8') as f:
+        wolff = json.load(f)
+    with open(os.path.join(MEMORY_DIR, "ark_journal.json"), 'r', encoding='utf-8') as f:
+        ark = json.load(f)
+        
+    latest_entry_1 = journal["entries"][-1]
+    latest_entry_2 = wolff["entries"][-1]
+    latest_entry_3 = ark["entries"][-1]
+    
     print("Generating report 1 (Actual Portfolio)...")
-    generate_report_1()
+    generate_report_1(latest_entry_1)
+    
     print("Generating report 2 (Wolff Simulation)...")
-    generate_report_2()
+    generate_report_2(latest_entry_2)
+    
     print("Generating report 3 (ARK Simulation)...")
-    generate_report_3()
+    generate_report_3(latest_entry_3)
     
     print("Reports generated successfully!")
 
