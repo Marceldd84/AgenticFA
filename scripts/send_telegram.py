@@ -158,12 +158,22 @@ def main():
     message_arg = sys.argv[2]
     html_report_path = sys.argv[3] if len(sys.argv) >= 4 else None
 
+    # Load .env file manually if it exists
+    env_path = os.path.join(os.path.dirname(config_path), "..", ".env")
+    if os.path.isfile(env_path):
+        with open(env_path, "r", encoding="utf-8") as env_f:
+            for line in env_f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k] = v.strip(' "\'')
+
     # Load config
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    bot_token = config["telegram"]["bot_token"]
-    chat_id = config["telegram"]["chat_id"]
+    bot_token = os.path.expandvars(config["telegram"]["bot_token"])
+    chat_id = os.path.expandvars(config["telegram"]["chat_id"])
 
     # Check if message_arg is a file path
     if os.path.isfile(message_arg):

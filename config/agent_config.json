@@ -1,0 +1,82 @@
+{
+  "mode": "live",
+  "account_number": "${ROBINHOOD_ACCOUNT_NUMBER}",
+  "telegram": {
+    "bot_token": "${TELEGRAM_BOT_TOKEN}",
+    "chat_id": "${TELEGRAM_CHAT_ID}"
+  },
+  "risk_rules": {
+    "max_position_pct": 18,
+    "max_positions": 5,
+    "min_positions": 2,
+    "hard_stop_loss_pct": 8,
+    "take_profit_trigger_pct": 10,
+    "trailing_stop_pct": 5,
+    "cash_reserve_pct": 10,
+    "max_daily_trades": 3,
+    "min_stock_price": 5.00
+  },
+  "macro_regime": {
+    "description": "Classifies the current market environment each morning. Overrides cash_reserve_pct and min_buy_score for the day's run.",
+    "regimes": {
+      "risk_on": {
+        "label": "🟢 Risk-On",
+        "condition": "VIX < 18 AND SPX above 50-day MA",
+        "cash_reserve_pct": 10,
+        "min_buy_score": 6.0,
+        "new_buys_allowed": true
+      },
+      "cautious": {
+        "label": "🟡 Cautious",
+        "condition": "VIX 18-25 OR SPX near 50-day MA",
+        "cash_reserve_pct": 15,
+        "min_buy_score": 6.5,
+        "new_buys_allowed": true
+      },
+      "risk_off": {
+        "label": "🔴 Risk-Off",
+        "condition": "VIX > 25 OR SPX below 50-day MA",
+        "cash_reserve_pct": 25,
+        "min_buy_score": 7.5,
+        "new_buys_allowed": false,
+        "note": "In risk_off mode, only rotations (existing high-score replacement) are allowed. No net new exposure."
+      }
+    },
+    "vix_source": "Search web for current VIX value via CBOE or finviz.com",
+    "spx_ma_source": "Search web for SPX 50-day moving average vs current price via finviz.com or macrotrends.net"
+  },
+  "exclusions": {
+    "categories": ["penny_stocks", "chinese_adrs", "meme_stocks"],
+    "blocked_symbols": [
+      "GME", "AMC", "BBBY", "KOSS", "BB", "CLOV", "WISH", "WKHS",
+      "BABA", "PDD", "JD", "NIO", "XPEV", "LI", "BIDU", "BILI", "IQ", "TAL", "FUTU", "TME", "DIDI",
+      "TCEHY", "BEKE", "ZH", "YMM", "MNSO", "GDS", "KC", "VNET", "QFIN", "TIGR", "FINV"
+    ],
+    "notes": "Penny stocks filtered by min_stock_price ($5). Chinese ADRs and meme stocks by blocked_symbols list + agent judgment."
+  },
+  "wolff_simulation": {
+    "enabled": true,
+    "starting_capital": 1000.00,
+    "cash_reserve_pct": 10.0,
+    "max_position_pct": 18.0,
+    "signal_score_boost": 1.5,
+    "description": "Runs a parallel, simulated copy of Peter Wolff's Flagship Fund starting with $1,000 cash. No real orders are submitted for this strategy.",
+    "source": "Substack: wolff.substack.com | X/Twitter: @peterjwolff"
+  },
+  "ark_simulation": {
+    "enabled": true,
+    "starting_capital": 1000.00,
+    "cash_reserve_pct": 10.0,
+    "max_position_pct": 18.0,
+    "signal_score_boost": 0.75,
+    "max_holdings_tracked": 15,
+    "description": "Runs a parallel, simulated copy of ARK Invest's ARKK flagship ETF starting with $1,000 cash. Tracks ARK's daily disclosed holdings. No real orders are submitted for this strategy.",
+    "source": "ARK daily holdings CSV: https://ark-funds.com/funds/arkk/",
+    "fallback_source": "ETF.com ARKK holdings page if CSV unavailable"
+  },
+  "schedule": {
+    "cron_utc": "0 14 * * 1-5",
+    "description": "10:00 AM ET (EDT) / 7:00 AM PT, Monday through Friday",
+    "timezone_note": "During EST (Nov-Mar), change to '0 15 * * 1-5' for 10:00 AM ET"
+  }
+}

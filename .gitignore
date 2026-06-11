@@ -1,11 +1,11 @@
 # FA Agent Credentials & Config
-config/agent_config.json
-
+.env
 # Local Memory / Database State
 memory/
 reports/
 
 # Temporary / Intermediate Files
+scratch/
 scripts/last_report.txt
 scripts/wolff_last_report.txt
 scripts/ark_last_report.txt
